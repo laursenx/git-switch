@@ -1,7 +1,6 @@
 import * as prompts from "@clack/prompts";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { projectsDir } from "../utils/paths.js";
 import { listAllProfiles } from "../core/profiles.js";
 import { detectCurrentProfile, findSubmoduleConfigs } from "../core/git-config.js";
 import { run } from "../utils/shell.js";
@@ -45,29 +44,20 @@ function findGitRepos(dir: string, maxDepth: number): string[] {
   return repos;
 }
 
-export async function doctorCommand(): Promise<void> {
-  prompts.intro("git-switch doctor — Scan for unmarked repos");
+export async function scanCommand(): Promise<void> {
+  prompts.intro("git-switch scan — Scan for unconfigured repos");
 
   const profiles = listAllProfiles();
-  const projDir = projectsDir();
-
-  if (!fs.existsSync(projDir)) {
-    prompts.log.warn(
-      `Projects directory not found: ${projDir}\n` +
-        "The doctor command scans ~/projects/ for git repositories.",
-    );
-    prompts.outro("");
-    process.exit(1);
-  }
+  const scanDir = process.cwd();
 
   const spinner = prompts.spinner();
-  spinner.start("Scanning ~/projects/ for git repos...");
+  spinner.start(`Scanning ${scanDir} for git repos...`);
 
-  const repos = findGitRepos(projDir, 3);
+  const repos = findGitRepos(scanDir, 3);
   spinner.stop(`Found ${repos.length} git repo(s).`);
 
   if (repos.length === 0) {
-    prompts.log.info("No git repositories found in ~/projects/.");
+    prompts.log.info("No git repositories found.");
     prompts.outro("");
     return;
   }
@@ -148,7 +138,7 @@ export async function doctorCommand(): Promise<void> {
 
   // Print results
   for (const status of statuses) {
-    const rel = path.relative(projDir, status.path);
+    const rel = path.relative(scanDir, status.path);
     switch (status.status) {
       case "ok":
         prompts.log.success(

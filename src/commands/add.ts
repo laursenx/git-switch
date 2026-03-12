@@ -1,11 +1,19 @@
 import * as prompts from "@clack/prompts";
 import { addProfile } from "../core/profiles.js";
 import { updateSSHConfigForProfiles, writePublicKeyFile } from "../core/ssh-config.js";
-import { listAllProfiles } from "../core/profiles.js";
+import { listAllProfiles, updateProfileDesktopLink } from "../core/profiles.js";
 import { getAllProviders, getProvider } from "../providers/index.js";
 import { validateEmail, validateProfileId, validateSSHAlias } from "../utils/validation.js";
 import { abortIfCancelled } from "../utils/prompts.js";
+import {
+  listGitHubCredentials,
+  readKeychainEntry,
+  renameKeychainEntry,
+} from "../core/desktop/keychain.js";
+import { addDesktopProfile } from "../core/desktop-profiles.js";
+import { readAppStateAccounts } from "../core/desktop/app-state.js";
 import type { Profile } from "../providers/types.js";
+import type { DesktopProfile } from "../providers/types.js";
 
 export async function addCommand(): Promise<void> {
   prompts.intro("git-switch add — Create a new profile");
@@ -133,6 +141,63 @@ export async function addCommand(): Promise<void> {
     }
   }
 
-  prompts.log.info("To link GitHub Desktop: git-switch desktop link");
+  // 13. Offer to capture GitHub Desktop session
+  try {
+    const credentials = listGitHubCredentials();
+    if (credentials.length > 0) {
+      const linkDesktop = abortIfCancelled(await prompts.confirm({
+        message: "GitHub Desktop detected — save current session and link to this profile?",
+        initialValue: true,
+      }));
+
+      if (linkDesktop) {
+        let keychainLabel: string;
+        if (credentials.length === 1) {
+          keychainLabel = credentials[0]!.target;
+          prompts.log.info(`Using credential: ${keychainLabel}`);
+        } else {
+          keychainLabel = abortIfCancelled(await prompts.select({
+            message: "Select the GitHub credential to capture",
+            options: credentials.map((c) => ({
+              value: c.target,
+              label: c.target,
+              hint: c.user || undefined,
+            })),
+          }));
+        }
+
+        const entry = readKeychainEntry(keychainLabel);
+        if (entry) {
+          const storedLabel = `git-switch-desktop:${id}:${gitEmail}`;
+
+          let appStateAccounts: unknown[] = [];
+          try { appStateAccounts = readAppStateAccounts(); } catch {}
+
+          const parkSpinner = prompts.spinner();
+          parkSpinner.start("Parking keychain entry...");
+          renameKeychainEntry(keychainLabel, storedLabel, gitEmail);
+          parkSpinner.stop("Keychain entry parked.");
+
+          const dp: DesktopProfile = {
+            id: `${id}-desktop`,
+            label,
+            email: gitEmail,
+            keychain_label: keychainLabel,
+            stored_label: storedLabel,
+            app_state_accounts: appStateAccounts,
+          };
+
+          addDesktopProfile(dp);
+          updateProfileDesktopLink(id, dp.id);
+          prompts.log.success(`Desktop profile saved and linked.`);
+        } else {
+          prompts.log.warn("Could not read credential — skipping Desktop setup.");
+        }
+      }
+    }
+  } catch {
+    // Desktop detection failed (e.g., no keychain tool) — silently skip
+  }
+
   prompts.outro(`Profile "${id}" created successfully!`);
 }

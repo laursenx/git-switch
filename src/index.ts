@@ -4,7 +4,7 @@ import { markCommand } from "./commands/mark.js";
 import { listCommand } from "./commands/list.js";
 import { removeCommand } from "./commands/remove.js";
 import { statusCommand } from "./commands/status.js";
-import { doctorCommand } from "./commands/doctor.js";
+import { scanCommand } from "./commands/doctor.js";
 import { cloneCommand } from "./commands/clone.js";
 import { globalCommand } from "./commands/global.js";
 import { desktopSaveCommand } from "./commands/desktop/save.js";
@@ -37,7 +37,7 @@ program.command("global").description("Set global git identity (~/.gitconfig)").
 program.command("list").description("List all profiles").action(wrap(listCommand));
 program.command("remove").description("Delete a profile").argument("[profile-id]", "Profile ID").action(wrap((id?: string) => removeCommand(id)));
 program.command("status").description("Show active profile in current repo").action(wrap(statusCommand));
-program.command("doctor").description("Scan ~/projects/ and report unmarked repos").action(wrap(doctorCommand));
+program.command("scan").description("Scan current directory for unconfigured repos").action(wrap(scanCommand));
 program.command("clone").description("Clone a repo with a profile").argument("<profile-id>", "Profile ID").argument("<url>", "Git URL").argument("[dir]", "Target directory").action(wrap((profileId: string, url: string, dir?: string) => cloneCommand(profileId, url, dir)));
 
 const desktop = program.command("desktop").description("GitHub Desktop profile management");

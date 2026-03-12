@@ -91,7 +91,3 @@ export function gitDesktopLocalStorageDir(): string {
 export function globalGitConfigPath(): string {
   return path.join(os.homedir(), ".gitconfig");
 }
-
-export function projectsDir(): string {
-  return path.join(os.homedir(), "projects");
-}
