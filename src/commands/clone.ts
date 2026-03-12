@@ -1,8 +1,8 @@
 import * as prompts from "@clack/prompts";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getProfile, listAllProfiles } from "../core/profiles.js";
-import { run, runOrThrow } from "../utils/shell.js";
+import { listAllProfiles } from "../core/profiles.js";
+import { run } from "../utils/shell.js";
 import {
   applyProfileToConfig,
   findSubmoduleConfigs,
@@ -10,7 +10,7 @@ import {
 import { updateSSHConfigForProfiles } from "../core/ssh-config.js";
 import { takeSnapshot, pruneSnapshots } from "../core/snapshot/index.js";
 import { repoHash } from "../utils/paths.js";
-import type { Profile } from "../providers/types.js";
+import { selectProfile, abortIfCancelled } from "../utils/prompts.js";
 
 function rewriteSSHUrl(url: string, alias: string, host: string): string {
   // git@github.com:org/repo.git → git@github-work:org/repo.git
@@ -32,35 +32,7 @@ export async function cloneCommand(
 ): Promise<void> {
   prompts.intro("git-switch clone — Clone with profile");
 
-  const profiles = listAllProfiles();
-  if (profiles.length === 0) {
-    prompts.cancel("No profiles configured. Run: git-switch add");
-    process.exit(1);
-  }
-
-  // Resolve profile
-  let profile: Profile | undefined;
-  if (profileId) {
-    profile = getProfile(profileId);
-    if (!profile) {
-      prompts.cancel(`Profile "${profileId}" not found.`);
-      process.exit(1);
-    }
-  } else {
-    const choice = await prompts.select({
-      message: "Select profile for this clone",
-      options: profiles.map((p) => ({
-        value: p.id,
-        label: p.label,
-        hint: p.git.email,
-      })),
-    });
-    if (prompts.isCancel(choice)) {
-      prompts.cancel("Aborted.");
-      process.exit(0);
-    }
-    profile = getProfile(choice as string)!;
-  }
+  const profile = await selectProfile(profileId, "Select profile for this clone");
 
   // Get URL if not provided
   if (!gitUrl) {
@@ -69,11 +41,7 @@ export async function cloneCommand(
       placeholder: "git@github.com:org/repo.git",
       validate: (val) => (!val.trim() ? "Required" : undefined),
     });
-    if (prompts.isCancel(urlInput)) {
-      prompts.cancel("Aborted.");
-      process.exit(0);
-    }
-    gitUrl = urlInput as string;
+    gitUrl = abortIfCancelled(urlInput);
   }
 
   // Rewrite URL

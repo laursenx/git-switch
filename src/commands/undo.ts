@@ -3,8 +3,8 @@ import {
   listSnapshots,
   restoreSnapshot,
 } from "../core/snapshot/index.js";
-import { getGitDir, getRepoRoot } from "../core/git-config.js";
 import { repoHash } from "../utils/paths.js";
+import { ensureGitRepo, abortIfCancelled } from "../utils/prompts.js";
 import type { SnapshotManifest } from "../providers/types.js";
 
 function formatTimestamp(ts: string): string {
@@ -25,14 +25,8 @@ function formatTransition(snap: SnapshotManifest): string {
 export async function undoListCommand(): Promise<void> {
   prompts.intro("git-switch undo --list — Snapshots for current repo");
 
-  let hash: string;
-  try {
-    const repoRoot = getRepoRoot();
-    hash = repoHash(repoRoot);
-  } catch {
-    prompts.cancel("Not inside a git repository.");
-    process.exit(1);
-  }
+  const repoRoot = ensureGitRepo().repoRoot;
+  const hash = repoHash(repoRoot);
 
   const snapshots = listSnapshots(hash);
   if (snapshots.length === 0) {
@@ -67,15 +61,8 @@ export async function undoListCommand(): Promise<void> {
 export async function undoCommand(snapshotId?: string): Promise<void> {
   prompts.intro("git-switch undo — Restore from snapshot");
 
-  let hash: string;
-  let repoRoot: string;
-  try {
-    repoRoot = getRepoRoot();
-    hash = repoHash(repoRoot);
-  } catch {
-    prompts.cancel("Not inside a git repository.");
-    process.exit(1);
-  }
+  const repoRoot = ensureGitRepo().repoRoot;
+  const hash = repoHash(repoRoot);
 
   let snapshot: SnapshotManifest;
 
@@ -109,11 +96,11 @@ export async function undoCommand(snapshotId?: string): Promise<void> {
     `Files to restore: ${snapshot.files.map((f) => f.original).join(", ")}`,
   );
 
-  const confirmed = await prompts.confirm({
+  const confirmed = abortIfCancelled(await prompts.confirm({
     message: "Restore?",
     initialValue: false,
-  });
-  if (prompts.isCancel(confirmed) || !confirmed) {
+  }));
+  if (!confirmed) {
     prompts.cancel("Aborted.");
     process.exit(0);
   }

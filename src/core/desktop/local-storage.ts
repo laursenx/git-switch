@@ -330,62 +330,6 @@ function indexOfBytes(
 }
 
 // ---------------------------------------------------------------------------
-// Building a WAL record for writing
-// ---------------------------------------------------------------------------
-
-function buildLogRecord(key: string, value: string): Uint8Array {
-  // Build the WriteBatch payload
-  const keyBytes = new TextEncoder().encode(key);
-  const valueBytes = new TextEncoder().encode(value);
-  const keyLenVarint = encodeVarint(keyBytes.length);
-  const valueLenVarint = encodeVarint(valueBytes.length);
-
-  // WriteBatch: sequence(8) + count(4) + [type(1) + keyLen(varint) + key + valueLen(varint) + value]
-  // We use sequence = 0 placeholder — LevelDB will assign the real sequence on recovery,
-  // but Electron's localStorage reads the WAL directly so we need a high sequence number.
-  // Use a large sequence to ensure this entry is "newest".
-  const batchSize =
-    8 + 4 + 1 + keyLenVarint.length + keyBytes.length + valueLenVarint.length + valueBytes.length;
-  const batch = new Uint8Array(batchSize);
-  const batchView = new DataView(batch.buffer);
-
-  // Sequence number — use current timestamp as a monotonically increasing value
-  // that's guaranteed to be larger than existing sequences
-  const seq = BigInt(Date.now()) * 1000n;
-  batchView.setBigUint64(0, seq, true);
-  // Count = 1
-  batchView.setUint32(8, 1, true);
-
-  let pos = 12;
-  batch[pos++] = BATCH_PUT;
-  batch.set(keyLenVarint, pos);
-  pos += keyLenVarint.length;
-  batch.set(keyBytes, pos);
-  pos += keyBytes.length;
-  batch.set(valueLenVarint, pos);
-  pos += valueLenVarint.length;
-  batch.set(valueBytes, pos);
-
-  // Build the physical WAL record: checksum(4) + length(2) + type(1) + data
-  const recordSize = HEADER_SIZE + batchSize;
-  const record = new Uint8Array(recordSize);
-  const recordView = new DataView(record.buffer);
-
-  // Type + data for CRC
-  const crcInput = new Uint8Array(1 + batchSize);
-  crcInput[0] = RECORD_FULL;
-  crcInput.set(batch, 1);
-  const checksum = maskCrc(crc32c(crcInput));
-
-  recordView.setUint32(0, checksum, true);
-  recordView.setUint16(4, batchSize, true);
-  record[6] = RECORD_FULL;
-  record.set(batch, HEADER_SIZE);
-
-  return record;
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -409,25 +353,6 @@ function getLevelDbDir(): string {
     );
   }
   return dir;
-}
-
-/**
- * Find the current .log file in the LevelDB directory.
- * LevelDB typically has one active log file. We pick the one with the
- * highest number (most recent).
- */
-function findCurrentLogFile(dir: string): string | null {
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".log"));
-  if (files.length === 0) return null;
-
-  // Sort numerically descending — file names are like "000003.log"
-  files.sort((a, b) => {
-    const numA = parseInt(a.split(".")[0]!, 10) || 0;
-    const numB = parseInt(b.split(".")[0]!, 10) || 0;
-    return numB - numA;
-  });
-
-  return path.join(dir, files[0]!);
 }
 
 // ---------------------------------------------------------------------------

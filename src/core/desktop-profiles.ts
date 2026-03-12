@@ -1,132 +1,70 @@
-import * as fs from "node:fs";
-import { desktopProfilesPath, profilesPath, ensureDir, configDir } from "../utils/paths.js";
-import type { DesktopProfile, DesktopProfilesConfig } from "../providers/types.js";
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "../db/index.js";
 import { GitSwitchError } from "../utils/errors.js";
+import type { DesktopProfile } from "../providers/types.js";
 
-function defaultConfig(): DesktopProfilesConfig {
-  return { version: 1, profiles: [] };
+type DesktopProfileRow = typeof schema.desktopProfiles.$inferSelect;
+
+function safeParseJSON<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
 }
 
-export function loadDesktopProfiles(): DesktopProfilesConfig {
-  const p = desktopProfilesPath();
-  if (!fs.existsSync(p)) {
-    return defaultConfig();
-  }
-  const raw = fs.readFileSync(p, "utf-8");
-  const parsed = JSON.parse(raw) as DesktopProfilesConfig;
-  if (parsed.version !== 1) {
-    throw new GitSwitchError(
-      `Unsupported desktop-profiles.json version: ${parsed.version}`,
-    );
-  }
-  return parsed;
+function rowToDesktopProfile(row: DesktopProfileRow): DesktopProfile {
+  return {
+    id: row.id,
+    label: row.label,
+    email: row.email,
+    keychain_label: row.keychainLabel,
+    stored_label: row.storedLabel,
+    app_state_accounts: safeParseJSON<unknown[]>(row.appStateAccounts, []),
+    users_json: row.usersJson ?? undefined,
+  };
 }
 
-export function saveDesktopProfiles(config: DesktopProfilesConfig): void {
-  const dir = configDir();
-  ensureDir(dir);
-  const p = desktopProfilesPath();
-  const tmp = p + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  fs.renameSync(tmp, p);
+function desktopProfileToRow(dp: DesktopProfile): typeof schema.desktopProfiles.$inferInsert {
+  return {
+    id: dp.id,
+    label: dp.label,
+    email: dp.email,
+    keychainLabel: dp.keychain_label,
+    storedLabel: dp.stored_label,
+    appStateAccounts: JSON.stringify(dp.app_state_accounts ?? []),
+    usersJson: dp.users_json ?? null,
+  };
 }
 
 export function getDesktopProfile(id: string): DesktopProfile | undefined {
-  const config = loadDesktopProfiles();
-  return config.profiles.find((p) => p.id === id);
+  const db = getDb();
+  const row = db.select().from(schema.desktopProfiles).where(eq(schema.desktopProfiles.id, id)).get();
+  return row ? rowToDesktopProfile(row) : undefined;
 }
 
 export function addDesktopProfile(profile: DesktopProfile): void {
-  const config = loadDesktopProfiles();
-  if (config.profiles.some((p) => p.id === profile.id)) {
+  const db = getDb();
+  const existing = db.select().from(schema.desktopProfiles).where(eq(schema.desktopProfiles.id, profile.id)).get();
+  if (existing) {
     throw new GitSwitchError(`Desktop profile "${profile.id}" already exists`);
   }
-  config.profiles.push(profile);
-  saveDesktopProfiles(config);
+  db.insert(schema.desktopProfiles).values(desktopProfileToRow(profile)).run();
 }
 
 export function removeDesktopProfile(id: string): DesktopProfile {
-  const config = loadDesktopProfiles();
-  const index = config.profiles.findIndex((p) => p.id === id);
-  if (index === -1) {
+  const db = getDb();
+  const row = db.select().from(schema.desktopProfiles).where(eq(schema.desktopProfiles.id, id)).get();
+  if (!row) {
     throw new GitSwitchError(`Desktop profile "${id}" not found`);
   }
-  const [removed] = config.profiles.splice(index, 1);
-  saveDesktopProfiles(config);
-  return removed!;
+  db.delete(schema.desktopProfiles).where(eq(schema.desktopProfiles.id, id)).run();
+  return rowToDesktopProfile(row);
 }
 
 export function listAllDesktopProfiles(): DesktopProfile[] {
-  return loadDesktopProfiles().profiles;
+  const db = getDb();
+  const rows = db.select().from(schema.desktopProfiles).all();
+  return rows.map(rowToDesktopProfile);
 }
 
-interface LegacyGitHubDesktop {
-  enabled: boolean;
-  keychain_label?: string;
-  stored_label?: string;
-  app_state_accounts?: unknown[];
-}
-
-interface LegacyProfile {
-  id: string;
-  label: string;
-  git: { name: string; email: string };
-  ssh: { provider: string; ref: string; host: string; alias: string };
-  github_desktop?: LegacyGitHubDesktop;
-  desktop_profile_id?: string;
-}
-
-interface LegacyProfilesConfig {
-  version: number;
-  profiles: LegacyProfile[];
-}
-
-export function migrateEmbeddedDesktopProfiles(): void {
-  const p = profilesPath();
-  if (!fs.existsSync(p)) return;
-
-  const raw = fs.readFileSync(p, "utf-8");
-  const config = JSON.parse(raw) as LegacyProfilesConfig;
-
-  const needsMigration = config.profiles.some(
-    (prof) => prof.github_desktop?.enabled,
-  );
-  if (!needsMigration) return;
-
-  const desktopConfig = loadDesktopProfiles();
-  let changed = false;
-
-  for (const prof of config.profiles) {
-    const gd = prof.github_desktop;
-    if (!gd?.enabled || !gd.keychain_label || !gd.stored_label) continue;
-
-    const desktopId = `migrated-${prof.id}`;
-
-    // Skip if already migrated
-    if (desktopConfig.profiles.some((dp) => dp.id === desktopId)) continue;
-
-    desktopConfig.profiles.push({
-      id: desktopId,
-      label: prof.label,
-      email: prof.git.email,
-      keychain_label: gd.keychain_label,
-      stored_label: gd.stored_label,
-      app_state_accounts: gd.app_state_accounts || [],
-    });
-
-    prof.desktop_profile_id = desktopId;
-    delete prof.github_desktop;
-    changed = true;
-  }
-
-  if (changed) {
-    saveDesktopProfiles(desktopConfig);
-
-    // Save updated profiles.json
-    const dir = configDir();
-    ensureDir(dir);
-    const tmp = p + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", "utf-8");
-    fs.renameSync(tmp, p);
-  }
-}

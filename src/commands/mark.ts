@@ -1,80 +1,32 @@
 import * as prompts from "@clack/prompts";
-import { getProfile, listAllProfiles } from "../core/profiles.js";
+import { listAllProfiles } from "../core/profiles.js";
 import {
-  getGitDir,
-  getRepoRoot,
   applyProfileToConfig,
   findSubmoduleConfigs,
+  detectCurrentProfile,
 } from "../core/git-config.js";
 import { updateSSHConfigForProfiles } from "../core/ssh-config.js";
 import { takeSnapshot, pruneSnapshots } from "../core/snapshot/index.js";
 import { repoHash } from "../utils/paths.js";
-import { detectCurrentProfile } from "../core/git-config.js";
+import { selectProfile, ensureGitRepo } from "../utils/prompts.js";
 import { getDesktopProfile } from "../core/desktop-profiles.js";
 import { switchDesktopToProfile } from "../core/desktop/index.js";
-import type { Profile } from "../providers/types.js";
 
 export async function markCommand(profileId?: string): Promise<void> {
   prompts.intro("git-switch mark — Apply profile to current repo");
 
-  const profiles = listAllProfiles();
-  if (profiles.length === 0) {
-    prompts.cancel("No profiles configured. Run: git-switch add");
-    process.exit(1);
-  }
+  const profile = await selectProfile(profileId, "Select profile to apply");
 
-  // Resolve profile
-  let profile: Profile | undefined;
-
-  if (profileId) {
-    profile = getProfile(profileId);
-    if (!profile) {
-      prompts.cancel(`Profile "${profileId}" not found.`);
-      process.exit(1);
-    }
-  } else if (profiles.length === 1) {
-    profile = profiles[0]!;
-    const confirmed = await prompts.confirm({
-      message: `Apply profile "${profile.label}" (${profile.git.email})?`,
-    });
-    if (prompts.isCancel(confirmed) || !confirmed) {
-      prompts.cancel("Aborted.");
-      process.exit(0);
-    }
-  } else {
-    const choice = await prompts.select({
-      message: "Select profile to apply",
-      options: profiles.map((p) => ({
-        value: p.id,
-        label: p.label,
-        hint: p.git.email,
-      })),
-    });
-    if (prompts.isCancel(choice)) {
-      prompts.cancel("Aborted.");
-      process.exit(0);
-    }
-    profile = getProfile(choice as string)!;
-  }
-
-  // Resolve git directory
-  let gitDir: string;
-  let repoRoot: string;
-  try {
-    gitDir = getGitDir();
-    repoRoot = getRepoRoot();
-  } catch {
-    prompts.cancel("Not inside a git repository.");
-    process.exit(1);
-  }
+  const { gitDir, repoRoot } = ensureGitRepo();
 
   const mainConfigPath = `${gitDir}/config`;
   const submoduleConfigs = findSubmoduleConfigs(gitDir);
 
   // Detect current profile for snapshot metadata
   const current = detectCurrentProfile(mainConfigPath);
-  const currentProfileId = profiles.find(
-    (p) => p.git.email === current.email,
+  const allProfiles = listAllProfiles();
+  const currentProfileId = allProfiles.find(
+    (p: { git: { email: string } }) => p.git.email === current.email,
   )?.id;
 
   // Take snapshot before any writes
@@ -100,7 +52,6 @@ export async function markCommand(profileId?: string): Promise<void> {
     }
 
     // Update SSH config
-    const allProfiles = listAllProfiles();
     updateSSHConfigForProfiles(allProfiles);
 
     spinner.stop("Profile applied.");

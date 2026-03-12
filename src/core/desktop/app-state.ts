@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { gitDesktopAppStatePath } from "../../utils/paths.js";
+import { atomicWriteFile } from "../../utils/fs.js";
 import { GitSwitchError } from "../../utils/errors.js";
 
 interface AppState {
@@ -34,7 +35,5 @@ export function writeAppStateAccounts(accounts: unknown[]): void {
   const state = readAppState();
   state.accounts = accounts;
 
-  const tmp = p + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n", "utf-8");
-  fs.renameSync(tmp, p);
+  atomicWriteFile(p, JSON.stringify(state, null, 2) + "\n");
 }

@@ -1,26 +1,17 @@
 import * as prompts from "@clack/prompts";
 import { listAllProfiles } from "../core/profiles.js";
 import {
-  getGitDir,
-  getRepoRoot,
   detectCurrentProfile,
   findSubmoduleConfigs,
   readGitConfig,
 } from "../core/git-config.js";
 import { run } from "../utils/shell.js";
+import { ensureGitRepo } from "../utils/prompts.js";
 
 export async function statusCommand(): Promise<void> {
   prompts.intro("git-switch status — Current repo profile");
 
-  let gitDir: string;
-  let repoRoot: string;
-  try {
-    gitDir = getGitDir();
-    repoRoot = getRepoRoot();
-  } catch {
-    prompts.cancel("Not inside a git repository.");
-    process.exit(1);
-  }
+  const { gitDir, repoRoot } = ensureGitRepo();
 
   const mainConfigPath = `${gitDir}/config`;
   const current = detectCurrentProfile(mainConfigPath);

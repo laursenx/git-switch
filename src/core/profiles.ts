@@ -1,61 +1,80 @@
-import * as fs from "node:fs";
-import { profilesPath, ensureDir, configDir } from "../utils/paths.js";
-import type { Profile, ProfilesConfig } from "../providers/types.js";
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "../db/index.js";
 import { GitSwitchError } from "../utils/errors.js";
+import type { Profile } from "../providers/types.js";
 
-function defaultConfig(): ProfilesConfig {
-  return { version: 1, profiles: [] };
+type ProfileRow = typeof schema.profiles.$inferSelect;
+
+const VALID_PROVIDERS = new Set<string>(["1password", "proton", "manual"]);
+
+function rowToProfile(row: ProfileRow): Profile {
+  const provider = VALID_PROVIDERS.has(row.sshProvider)
+    ? (row.sshProvider as Profile["ssh"]["provider"])
+    : "manual";
+
+  return {
+    id: row.id,
+    label: row.label,
+    git: { name: row.gitName, email: row.gitEmail },
+    ssh: {
+      provider,
+      ref: row.sshRef,
+      host: row.sshHost,
+      alias: row.sshAlias,
+    },
+    desktop_profile_id: row.desktopProfileId ?? undefined,
+  };
 }
 
-export function loadProfiles(): ProfilesConfig {
-  const p = profilesPath();
-  if (!fs.existsSync(p)) {
-    return defaultConfig();
-  }
-  const raw = fs.readFileSync(p, "utf-8");
-  const parsed = JSON.parse(raw) as ProfilesConfig;
-  if (parsed.version !== 1) {
-    throw new GitSwitchError(
-      `Unsupported profiles.json version: ${parsed.version}`,
-    );
-  }
-  return parsed;
-}
-
-export function saveProfiles(config: ProfilesConfig): void {
-  const dir = configDir();
-  ensureDir(dir);
-  const p = profilesPath();
-  const tmp = p + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  fs.renameSync(tmp, p);
+function profileToRow(p: Profile): typeof schema.profiles.$inferInsert {
+  return {
+    id: p.id,
+    label: p.label,
+    gitName: p.git.name,
+    gitEmail: p.git.email,
+    sshProvider: p.ssh.provider,
+    sshRef: p.ssh.ref,
+    sshHost: p.ssh.host,
+    sshAlias: p.ssh.alias,
+    desktopProfileId: p.desktop_profile_id ?? null,
+  };
 }
 
 export function getProfile(id: string): Profile | undefined {
-  const config = loadProfiles();
-  return config.profiles.find((p) => p.id === id);
+  const db = getDb();
+  const row = db.select().from(schema.profiles).where(eq(schema.profiles.id, id)).get();
+  return row ? rowToProfile(row) : undefined;
 }
 
 export function addProfile(profile: Profile): void {
-  const config = loadProfiles();
-  if (config.profiles.some((p) => p.id === profile.id)) {
+  const db = getDb();
+  const existing = db.select().from(schema.profiles).where(eq(schema.profiles.id, profile.id)).get();
+  if (existing) {
     throw new GitSwitchError(`Profile "${profile.id}" already exists`);
   }
-  config.profiles.push(profile);
-  saveProfiles(config);
+  db.insert(schema.profiles).values(profileToRow(profile)).run();
 }
 
 export function removeProfile(id: string): Profile {
-  const config = loadProfiles();
-  const index = config.profiles.findIndex((p) => p.id === id);
-  if (index === -1) {
+  const db = getDb();
+  const row = db.select().from(schema.profiles).where(eq(schema.profiles.id, id)).get();
+  if (!row) {
     throw new GitSwitchError(`Profile "${id}" not found`);
   }
-  const [removed] = config.profiles.splice(index, 1);
-  saveProfiles(config);
-  return removed!;
+  db.delete(schema.profiles).where(eq(schema.profiles.id, id)).run();
+  return rowToProfile(row);
 }
 
 export function listAllProfiles(): Profile[] {
-  return loadProfiles().profiles;
+  const db = getDb();
+  const rows = db.select().from(schema.profiles).all();
+  return rows.map(rowToProfile);
+}
+
+export function updateProfileDesktopLink(profileId: string, desktopProfileId: string | null): void {
+  const db = getDb();
+  db.update(schema.profiles)
+    .set({ desktopProfileId: desktopProfileId })
+    .where(eq(schema.profiles.id, profileId))
+    .run();
 }

@@ -42,22 +42,12 @@ export interface DesktopProfile {
   users_json?: string;
 }
 
-export interface DesktopProfilesConfig {
-  version: number;
-  profiles: DesktopProfile[];
-}
-
 export interface Profile {
   id: string;
   label: string;
   git: ProfileGit;
   ssh: ProfileSSH;
   desktop_profile_id?: string;
-}
-
-export interface ProfilesConfig {
-  version: number;
-  profiles: Profile[];
 }
 
 export interface SnapshotFile {

@@ -1,7 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { eq, desc } from "drizzle-orm";
 import { snapshotsDir, ensureDir, repoHash } from "../../utils/paths.js";
 import { SnapshotError } from "../../utils/errors.js";
+import { getDb, schema } from "../../db/index.js";
 import type { SnapshotManifest, SnapshotFile } from "../../providers/types.js";
 import { collectRepoFiles, copyRepoFiles, restoreRepoFiles } from "./repo.js";
 import { collectSSHFiles, copySSHFiles, restoreSSHFiles } from "./ssh.js";
@@ -11,6 +13,14 @@ import {
   restoreDesktopFiles,
   writeKeychainManifest,
 } from "./desktop.js";
+
+function safeParseJSON<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
 
 interface TakeSnapshotOptions {
   operation: SnapshotManifest["operation"];
@@ -67,23 +77,24 @@ export function takeSnapshot(opts: TakeSnapshotOptions): SnapshotManifest {
   const dir = path.join(snapshotsDir(), id);
   ensureDir(dir);
 
-  // Copy all files before writing manifest
-  if (opts.gitDir && opts.submoduleConfigs) {
-    const repoFiles = collectRepoFiles(opts.gitDir, opts.submoduleConfigs);
-    copyRepoFiles(repoFiles, dir);
-  }
-  const sshFiles = collectSSHFiles();
-  copySSHFiles(sshFiles, dir);
+  // Copy files using the already-collected list
+  const repoFiles = allFiles.filter(
+    (f) => f.snapshot.startsWith("git-config") || f.snapshot.startsWith("modules/"),
+  );
+  if (repoFiles.length > 0) copyRepoFiles(repoFiles, dir);
 
-  if (opts.operation === "desktop") {
-    const desktopFiles = collectDesktopFiles();
+  const sshFiles = allFiles.filter((f) => f.snapshot === "ssh-config");
+  if (sshFiles.length > 0) copySSHFiles(sshFiles, dir);
+
+  const desktopFiles = allFiles.filter((f) => f.snapshot === "app-state.json");
+  if (desktopFiles.length > 0) {
     copyDesktopFiles(desktopFiles, dir);
     if (opts.keychainLabels) {
       writeKeychainManifest(dir, opts.keychainLabels);
     }
   }
 
-  // Write manifest last — its presence means the snapshot is complete
+  // Write manifest to database
   const manifest: SnapshotManifest = {
     id,
     repo: opts.repoPath,
@@ -96,45 +107,49 @@ export function takeSnapshot(opts: TakeSnapshotOptions): SnapshotManifest {
     files: allFiles,
   };
 
-  const manifestPath = path.join(dir, "manifest.json");
-  fs.writeFileSync(
-    manifestPath,
-    JSON.stringify(manifest, null, 2) + "\n",
-    "utf-8",
-  );
+  const db = getDb();
+  db.insert(schema.snapshots).values({
+    id: manifest.id,
+    timestamp: manifest.timestamp,
+    operation: manifest.operation,
+    repoPath: manifest.repo ?? null,
+    repoHash: manifest.repo_hash ?? null,
+    profileBefore: manifest.profile_before ?? null,
+    profileAfter: manifest.profile_after ?? null,
+    filesDir: dir,
+    files: JSON.stringify(manifest.files),
+    restored: false,
+  }).run();
 
   return manifest;
 }
 
+function rowToManifest(row: typeof schema.snapshots.$inferSelect): SnapshotManifest {
+  return {
+    id: row.id,
+    repo: row.repoPath ?? undefined,
+    repo_hash: row.repoHash ?? undefined,
+    timestamp: row.timestamp,
+    operation: row.operation as SnapshotManifest["operation"],
+    profile_before: row.profileBefore ?? undefined,
+    profile_after: row.profileAfter ?? undefined,
+    restored: row.restored,
+    files: safeParseJSON<SnapshotFile[]>(row.files, []),
+  };
+}
+
 export function listSnapshots(filterRepoHash?: string): SnapshotManifest[] {
-  const dir = snapshotsDir();
-  if (!fs.existsSync(dir)) return [];
+  const db = getDb();
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  const manifests: SnapshotManifest[] = [];
+  const condition = filterRepoHash
+    ? eq(schema.snapshots.repoHash, filterRepoHash)
+    : undefined;
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const manifestPath = path.join(dir, entry.name, "manifest.json");
-    if (!fs.existsSync(manifestPath)) continue; // incomplete snapshot
+  const rows = condition
+    ? db.select().from(schema.snapshots).where(condition).orderBy(desc(schema.snapshots.timestamp)).all()
+    : db.select().from(schema.snapshots).orderBy(desc(schema.snapshots.timestamp)).all();
 
-    try {
-      const raw = fs.readFileSync(manifestPath, "utf-8");
-      const manifest = JSON.parse(raw) as SnapshotManifest;
-
-      if (filterRepoHash && manifest.repo_hash !== filterRepoHash) continue;
-      manifests.push(manifest);
-    } catch {
-      // Skip corrupted manifests
-    }
-  }
-
-  // Sort newest first
-  manifests.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-  );
-
-  return manifests;
+  return rows.map(rowToManifest);
 }
 
 export function restoreSnapshot(snapshotIdOrManifest: string | SnapshotManifest): {
@@ -145,14 +160,16 @@ export function restoreSnapshot(snapshotIdOrManifest: string | SnapshotManifest)
   let dir: string;
 
   if (typeof snapshotIdOrManifest === "string") {
-    dir = path.join(snapshotsDir(), snapshotIdOrManifest);
-    const manifestPath = path.join(dir, "manifest.json");
-    if (!fs.existsSync(manifestPath)) {
+    const db = getDb();
+    const row = db.select().from(schema.snapshots)
+      .where(eq(schema.snapshots.id, snapshotIdOrManifest)).get();
+    if (!row) {
       throw new SnapshotError(
         `Snapshot not found: ${snapshotIdOrManifest}`,
       );
     }
-    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as SnapshotManifest;
+    manifest = rowToManifest(row);
+    dir = row.filesDir;
   } else {
     manifest = snapshotIdOrManifest;
     dir = path.join(snapshotsDir(), manifest.id);
@@ -187,31 +204,28 @@ export function restoreSnapshot(snapshotIdOrManifest: string | SnapshotManifest)
   }
 
   // Mark snapshot as restored
-  manifest.restored = true;
-  const manifestPath = path.join(dir, "manifest.json");
-  fs.writeFileSync(
-    manifestPath,
-    JSON.stringify(manifest, null, 2) + "\n",
-    "utf-8",
-  );
+  const db = getDb();
+  db.update(schema.snapshots)
+    .set({ restored: true })
+    .where(eq(schema.snapshots.id, manifest.id))
+    .run();
 
   return { restored: allRestored, failed: allFailed };
 }
 
 export function pruneSnapshots(currentRepoHash?: string): void {
-  const dir = snapshotsDir();
-  if (!fs.existsSync(dir)) return;
+  const db = getDb();
 
   // Prune repo snapshots (keep 10 per repo_hash)
   if (currentRepoHash) {
     const repoSnapshots = listSnapshots(currentRepoHash);
-    // Don't prune if most recent was restored
-    if (repoSnapshots.length > 0 && repoSnapshots[0]!.restored) return;
+    if (repoSnapshots.length > 0 && repoSnapshots[0].restored) return;
 
     const toRemove = repoSnapshots.slice(10);
     for (const snap of toRemove) {
-      const snapDir = path.join(dir, snap.id);
+      const snapDir = path.join(snapshotsDir(), snap.id);
       fs.rmSync(snapDir, { recursive: true, force: true });
+      db.delete(schema.snapshots).where(eq(schema.snapshots.id, snap.id)).run();
     }
   }
 
@@ -219,15 +233,13 @@ export function pruneSnapshots(currentRepoHash?: string): void {
   const desktopSnapshots = listSnapshots().filter(
     (s) => s.operation === "desktop",
   );
-  if (
-    desktopSnapshots.length > 0 &&
-    desktopSnapshots[0]!.restored
-  ) {
+  if (desktopSnapshots.length > 0 && desktopSnapshots[0].restored) {
     return;
   }
   const toRemoveDesktop = desktopSnapshots.slice(5);
   for (const snap of toRemoveDesktop) {
-    const snapDir = path.join(dir, snap.id);
+    const snapDir = path.join(snapshotsDir(), snap.id);
     fs.rmSync(snapDir, { recursive: true, force: true });
+    db.delete(schema.snapshots).where(eq(schema.snapshots.id, snap.id)).run();
   }
 }

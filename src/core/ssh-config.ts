@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { sshConfigPath, sshDir, sshPublicKeyPath, ensureDir } from "../utils/paths.js";
+import { atomicWriteFile } from "../utils/fs.js";
 import type { Profile } from "../providers/types.js";
 
 const BEGIN_MARKER = "# --- git-switch managed --- BEGIN ---";
@@ -74,10 +75,7 @@ function extractFencedBlocks(content: string): SSHHostBlock[] {
 export function writeSSHConfig(content: string): void {
   const dir = sshDir();
   ensureDir(dir);
-  const p = sshConfigPath();
-  const tmp = p + ".tmp";
-  fs.writeFileSync(tmp, content, "utf-8");
-  fs.renameSync(tmp, p);
+  atomicWriteFile(sshConfigPath(), content);
 }
 
 export function resolveIdentityFile(profile: Profile): string {
@@ -124,10 +122,7 @@ export function removeAliasFromSSHConfig(alias: string): void {
 
 export function writePublicKeyFile(alias: string, publicKey: string): void {
   const keyPath = sshPublicKeyPath(alias);
-  ensureDir(path.dirname(keyPath));
-  const tmp = keyPath + ".tmp";
-  fs.writeFileSync(tmp, publicKey.trim() + "\n", "utf-8");
-  fs.renameSync(tmp, keyPath);
+  atomicWriteFile(keyPath, publicKey.trim() + "\n");
 }
 
 export function deletePublicKeyFile(alias: string): void {

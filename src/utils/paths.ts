@@ -14,14 +14,6 @@ export function configDir(): string {
   return path.join(os.homedir(), ".config", "git-switch");
 }
 
-export function profilesPath(): string {
-  return path.join(configDir(), "profiles.json");
-}
-
-export function desktopProfilesPath(): string {
-  return path.join(configDir(), "desktop-profiles.json");
-}
-
 export function snapshotsDir(): string {
   return path.join(configDir(), "snapshots");
 }

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { gitDesktopAppStatePath } from "../../utils/paths.js";
+import { atomicWriteFile } from "../../utils/fs.js";
 import type { SnapshotFile } from "../../providers/types.js";
 
 export function collectDesktopFiles(): SnapshotFile[] {
@@ -35,7 +36,7 @@ export function writeKeychainManifest(
     note: "No tokens stored — labels only for reference",
   };
   const dest = path.join(snapshotDir, "keychain-manifest.json");
-  fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+  atomicWriteFile(dest, JSON.stringify(manifest, null, 2) + "\n");
 }
 
 export function restoreDesktopFiles(

@@ -265,8 +265,8 @@ export function renameKeychainEntry(
 ): void {
   ensureKeychainTool();
   const token = readToken(oldLabel);
-  deleteEntry(oldLabel);
   addEntry(newLabel, account, token);
+  deleteEntry(oldLabel);
 }
 
 /**
