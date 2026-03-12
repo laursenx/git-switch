@@ -13,17 +13,46 @@ Git identity and SSH key profile switcher for developers who work with multiple 
 
 ## Installation
 
-```bash
-# Clone and build
-git clone <repo-url> && cd git-switch
-bun install
-bun run build
+### Windows
 
-# Link globally
-bun link
+```powershell
+irm https://raw.githubusercontent.com/laursenx/git-switch/main/install.ps1 | iex
 ```
 
-The `git-switch` command will be available system-wide.
+### macOS / Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/laursenx/git-switch/main/install.sh | bash
+```
+
+### Install a specific version
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File install.ps1 -Version 0.1.0
+
+# macOS / Linux
+GIT_SWITCH_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/laursenx/git-switch/main/install.sh | bash
+```
+
+### Uninstall
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/laursenx/git-switch/main/uninstall.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/laursenx/git-switch/main/uninstall.sh | bash
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/laursenx/git-switch.git && cd git-switch
+bun install
+bun run compile
+# Binary at dist/git-switch(.exe)
+```
 
 ## Quick Start
 
@@ -51,13 +80,17 @@ Interactive wizard to create a new profile. Prompts for:
 2. Git name and email
 3. SSH key provider and key selection
 4. Git host and SSH alias
-5. Optional GitHub Desktop setup
+5. Optional GitHub Desktop session capture
 
 ### `git-switch mark [profile-id]`
 
 Apply a profile to the current repo. Writes `user.name`, `user.email`, and `url.insteadOf` to `.git/config` and all submodule configs.
 
 Always takes a snapshot before writing. On failure, auto-restores.
+
+### `git-switch global [profile-id]`
+
+Set the global git identity in `~/.gitconfig`.
 
 ### `git-switch list`
 
@@ -75,18 +108,32 @@ Delete a profile and clean up its SSH config entries and public key file.
 
 Clone a repo with SSH URL rewriting, then auto-mark with the specified profile. Detects submodules and offers to initialize them.
 
-### `git-switch doctor`
+### `git-switch scan`
 
-Scan `~/projects/` (max depth 3) for git repos. Reports:
-- `✓` — profile marked and in sync
-- `⚠` — no profile marked
-- `✗` — submodule configs out of sync
+Scan the current directory (max depth 3) for git repos. Reports:
+- Repos with a profile marked and in sync
+- Repos with no profile marked
+- Repos with submodule configs out of sync
 
-Exits with code 1 if any issues found.
+### `git-switch desktop save`
 
-### `git-switch desktop [profile-id]`
+Capture the current GitHub Desktop session (keychain entry + app state).
 
-Switch GitHub Desktop to a specific profile via OS keychain rotation. Does not touch repo configs.
+### `git-switch desktop switch [id]`
+
+Switch GitHub Desktop to a saved profile via OS keychain rotation.
+
+### `git-switch desktop list`
+
+List all saved Desktop profiles.
+
+### `git-switch desktop remove [id]`
+
+Remove a saved Desktop profile.
+
+### `git-switch desktop link`
+
+Link a Desktop profile to a git-switch profile.
 
 ### `git-switch undo`
 
@@ -144,7 +191,7 @@ Desktop switching is opt-in per profile. During `git-switch add`:
 2. The tool captures the keychain entry and `app-state.json` snapshot
 3. The keychain entry is parked under a prefixed label
 
-On `git-switch desktop <profile>`:
+On `git-switch desktop switch <profile>`:
 1. The active keychain entry is parked
 2. The target profile's parked entry is activated
 3. `app-state.json` accounts are swapped
@@ -161,8 +208,13 @@ On `git-switch desktop <profile>`:
 
 ## Tech Stack
 
-- TypeScript (strict mode)
+- TypeScript (strict mode), Bun runtime
 - `@clack/prompts` for interactive UI
-- `tsup` for single-file CJS build
+- Compiled to standalone binary via `bun build --compile`
+- Windows credential management via `bun:ffi` (direct advapi32.dll calls)
 - No external git libraries — shells out to system `git`
 - Config stored at `~/.config/git-switch/`
+
+## License
+
+MIT

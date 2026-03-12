@@ -13,8 +13,9 @@ import { desktopRemoveCommand } from "./commands/desktop/remove.js";
 import { desktopSwitchCommand } from "./commands/desktop/switch.js";
 import { desktopLinkCommand } from "./commands/desktop/link.js";
 import { undoCommand, undoListCommand } from "./commands/undo.js";
+import pkg from "../package.json";
 
-const VERSION = "0.1.0";
+const VERSION = pkg.version;
 
 function wrap(fn: (...args: any[]) => Promise<void>): (...args: any[]) => Promise<void> {
   return async (...args: any[]) => {

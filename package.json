@@ -15,7 +15,9 @@
     "compile:mac-x64": "bun build src/index.ts --compile --minify --sourcemap --bytecode --target bun-darwin-x64 --outfile dist/git-switch",
     "dev": "bun --watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "test:installer": "powershell -ExecutionPolicy Bypass -File scripts/test-installer.ps1",
+    "test:installer:keep": "powershell -ExecutionPolicy Bypass -File scripts/test-installer.ps1 -KeepInstall"
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",

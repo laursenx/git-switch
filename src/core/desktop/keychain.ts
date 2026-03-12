@@ -7,28 +7,198 @@ interface KeychainEntry {
   password: string;
 }
 
-const WIN32_CRED_PREAMBLE = `
-Add-Type -Namespace Win32 -Name Cred -MemberDefinition '
-[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
-public static extern bool CredRead(string target, int type, int flags, out IntPtr cred);
-[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
-public static extern bool CredWrite(ref CREDENTIAL cred, int flags);
-[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
-public static extern bool CredDelete(string target, int type, int flags);
-[DllImport("advapi32.dll")]
-public static extern void CredFree(IntPtr cred);
-[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
-public struct CREDENTIAL {
-  public int Flags; public int Type; public string TargetName; public string Comment;
-  public long LastWritten; public int CredentialBlobSize; public IntPtr CredentialBlob;
-  public int Persist; public int AttributeCount; public IntPtr Attributes;
-  public string TargetAlias; public string UserName;
-}';
-`;
+// ---------------------------------------------------------------------------
+// Windows Credential Manager via Bun FFI (advapi32.dll)
+// ---------------------------------------------------------------------------
 
-function escapePS(s: string): string {
-  return s.replace(/'/g, "''");
+const CRED_TYPE_GENERIC = 1;
+const CRED_PERSIST_LOCAL_MACHINE = 2;
+
+// CREDENTIALW struct layout on x64 (80 bytes):
+//  0: Flags (u32)       4: Type (u32)         8: TargetName (ptr)
+// 16: Comment (ptr)    24: LastWritten (u64)  32: BlobSize (u32)
+// 36: (pad 4)          40: Blob (ptr)        48: Persist (u32)
+// 52: AttrCount (u32)  56: Attributes (ptr)  64: TargetAlias (ptr)
+// 72: UserName (ptr)
+const CRED_STRUCT_SIZE = 80;
+
+interface Advapi32Symbols {
+  CredReadW: (target: number, type: number, flags: number, out: number) => number;
+  CredWriteW: (cred: number, flags: number) => number;
+  CredDeleteW: (target: number, type: number, flags: number) => number;
+  CredFree: (ptr: number) => void;
+  CredEnumerateW: (filter: number, flags: number, count: number, creds: number) => number;
 }
+
+let _symbols: Advapi32Symbols | null = null;
+
+function getAdvapi32(): Advapi32Symbols {
+  if (_symbols) return _symbols;
+  const { dlopen, FFIType } = require("bun:ffi");
+  const lib = dlopen("advapi32.dll", {
+    CredReadW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+    CredWriteW: {
+      args: [FFIType.ptr, FFIType.u32],
+      returns: FFIType.i32,
+    },
+    CredDeleteW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.u32],
+      returns: FFIType.i32,
+    },
+    CredFree: {
+      args: [FFIType.ptr],
+      returns: FFIType.void,
+    },
+    CredEnumerateW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+  });
+  _symbols = lib.symbols as unknown as Advapi32Symbols;
+  return _symbols;
+}
+
+function toWideString(str: string): { buffer: Buffer; pointer: number } {
+  const { ptr } = require("bun:ffi");
+  const buf = Buffer.alloc((str.length + 1) * 2);
+  buf.write(str, "utf16le");
+  return { buffer: buf, pointer: ptr(buf) };
+}
+
+function fromWideString(pointer: number): string {
+  if (pointer === 0) return "";
+  const { read, toArrayBuffer } = require("bun:ffi");
+  let byteLen = 0;
+  while (true) {
+    const lo = read.u8(pointer, byteLen);
+    const hi = read.u8(pointer, byteLen + 1);
+    if (lo === 0 && hi === 0) break;
+    byteLen += 2;
+  }
+  if (byteLen === 0) return "";
+  const ab = toArrayBuffer(pointer, 0, byteLen);
+  return new TextDecoder("utf-16le").decode(ab);
+}
+
+function win32CredRead(target: string): { blob: Buffer; userName: string } | null {
+  const { ptr, read, toArrayBuffer } = require("bun:ffi");
+  const api = getAdvapi32();
+
+  const targetWide = toWideString(target);
+  const outBuf = Buffer.alloc(8);
+  const outPtr = ptr(outBuf);
+
+  const ok = api.CredReadW(targetWide.pointer, CRED_TYPE_GENERIC, 0, outPtr);
+  if (!ok) return null;
+
+  const credPtr = read.ptr(outPtr, 0);
+  const blobSize: number = read.u32(credPtr, 32);
+  const blobPtr: number = read.ptr(credPtr, 40);
+  const userNamePtr: number = read.ptr(credPtr, 72);
+
+  const blob = blobSize > 0 && blobPtr
+    ? Buffer.from(toArrayBuffer(blobPtr, 0, blobSize))
+    : Buffer.alloc(0);
+  const userName = fromWideString(userNamePtr);
+
+  api.CredFree(credPtr);
+
+  // Keep references alive past native calls
+  void targetWide.buffer;
+  void outBuf;
+
+  return { blob, userName };
+}
+
+function win32CredWrite(target: string, userName: string, blob: Buffer): void {
+  const { ptr } = require("bun:ffi");
+  const api = getAdvapi32();
+
+  const targetWide = toWideString(target);
+  const userWide = toWideString(userName);
+
+  const structBuf = Buffer.alloc(CRED_STRUCT_SIZE);
+  const view = new DataView(structBuf.buffer, structBuf.byteOffset, structBuf.byteLength);
+
+  view.setUint32(0, 0, true);                                    // Flags
+  view.setUint32(4, CRED_TYPE_GENERIC, true);                     // Type
+  view.setBigUint64(8, BigInt(targetWide.pointer), true);         // TargetName
+  view.setBigUint64(16, BigInt(0), true);                         // Comment
+  // LastWritten at 24 — leave zeros
+  view.setUint32(32, blob.length, true);                          // BlobSize
+  view.setBigUint64(40, BigInt(ptr(blob)), true);                 // Blob
+  view.setUint32(48, CRED_PERSIST_LOCAL_MACHINE, true);           // Persist
+  view.setUint32(52, 0, true);                                    // AttributeCount
+  view.setBigUint64(56, BigInt(0), true);                         // Attributes
+  view.setBigUint64(64, BigInt(0), true);                         // TargetAlias
+  view.setBigUint64(72, BigInt(userWide.pointer), true);          // UserName
+
+  const ok = api.CredWriteW(ptr(structBuf), 0);
+
+  // Keep references alive past native call
+  void targetWide.buffer;
+  void userWide.buffer;
+  void blob;
+  void structBuf;
+
+  if (!ok) {
+    throw new DesktopKeychainError("win32", `CredWriteW failed for "${target}"`);
+  }
+}
+
+function win32CredDelete(target: string): void {
+  const api = getAdvapi32();
+  const targetWide = toWideString(target);
+  api.CredDeleteW(targetWide.pointer, CRED_TYPE_GENERIC, 0);
+  void targetWide.buffer;
+}
+
+function win32CredEnumerate(filter: string | null): Array<{ target: string; userName: string }> {
+  const { ptr, read } = require("bun:ffi");
+  const api = getAdvapi32();
+
+  const filterWide = filter ? toWideString(filter) : null;
+  const countBuf = Buffer.alloc(4);
+  const credsBuf = Buffer.alloc(8);
+
+  const ok = api.CredEnumerateW(
+    filterWide?.pointer ?? 0,
+    0,
+    ptr(countBuf),
+    ptr(credsBuf),
+  );
+
+  if (!ok) return [];
+
+  const count = new DataView(countBuf.buffer, countBuf.byteOffset, 4).getUint32(0, true);
+  const arrayPtr = read.ptr(ptr(credsBuf), 0);
+
+  const results: Array<{ target: string; userName: string }> = [];
+  for (let i = 0; i < count; i++) {
+    const credPtr = read.ptr(arrayPtr, i * 8);
+    const targetNamePtr: number = read.ptr(credPtr, 8);
+    const userNamePtr: number = read.ptr(credPtr, 72);
+    results.push({
+      target: fromWideString(targetNamePtr),
+      userName: fromWideString(userNamePtr),
+    });
+  }
+
+  api.CredFree(arrayPtr);
+
+  void filterWide?.buffer;
+  void countBuf;
+  void credsBuf;
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-platform API
+// ---------------------------------------------------------------------------
 
 function ensureKeychainTool(): void {
   const platform = process.platform;
@@ -41,7 +211,7 @@ function ensureKeychainTool(): void {
       );
     }
   } else if (platform === "win32") {
-    // Windows uses P/Invoke to advapi32.dll — no external tools needed
+    // Windows uses Bun FFI to advapi32.dll — no external tools needed
   } else if (platform === "linux") {
     if (!isCommandAvailable("secret-tool")) {
       throw new DesktopKeychainError(
@@ -66,20 +236,11 @@ function readToken(label: string): string {
   }
 
   if (platform === "win32") {
-    const result = runOrThrow("powershell.exe", [
-      "-NoProfile",
-      "-Command",
-      `${WIN32_CRED_PREAMBLE}
-$ptr=[IntPtr]::Zero;
-if([Win32.Cred]::CredRead('${escapePS(label)}',1,0,[ref]$ptr)){
-  $c=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][Win32.Cred+CREDENTIAL]);
-  $bytes=New-Object byte[] $c.CredentialBlobSize;
-  [Runtime.InteropServices.Marshal]::Copy($c.CredentialBlob,$bytes,0,$c.CredentialBlobSize);
-  [Win32.Cred]::CredFree($ptr);
-  Write-Output ([Convert]::ToBase64String($bytes))
-} else { exit 1 }`,
-    ]);
-    return result;
+    const result = win32CredRead(label);
+    if (!result) {
+      throw new DesktopKeychainError("win32", `Credential not found: "${label}"`);
+    }
+    return result.blob.toString("base64");
   }
 
   // Linux
@@ -95,12 +256,7 @@ function deleteEntry(label: string): void {
   }
 
   if (platform === "win32") {
-    run("powershell.exe", [
-      "-NoProfile",
-      "-Command",
-      `${WIN32_CRED_PREAMBLE}
-[Win32.Cred]::CredDelete('${escapePS(label)}',1,0) | Out-Null`,
-    ]);
+    win32CredDelete(label);
     return;
   }
 
@@ -127,22 +283,8 @@ function addEntry(label: string, account: string, token: string): void {
   }
 
   if (platform === "win32") {
-    runOrThrow("powershell.exe", [
-      "-NoProfile",
-      "-Command",
-      `${WIN32_CRED_PREAMBLE}
-$bytes=[Convert]::FromBase64String('${token}');
-$c=New-Object Win32.Cred+CREDENTIAL;
-$c.Type=1;
-$c.TargetName='${escapePS(label)}';
-$c.UserName='${escapePS(account)}';
-$c.CredentialBlobSize=$bytes.Length;
-$c.CredentialBlob=[Runtime.InteropServices.Marshal]::AllocHGlobal($bytes.Length);
-[Runtime.InteropServices.Marshal]::Copy($bytes,0,$c.CredentialBlob,$bytes.Length);
-$c.Persist=2;
-if(-not [Win32.Cred]::CredWrite([ref]$c,0)){ exit 1 }
-[Runtime.InteropServices.Marshal]::FreeHGlobal($c.CredentialBlob);`,
-    ]);
+    const blob = Buffer.from(token, "base64");
+    win32CredWrite(label, account, blob);
     return;
   }
 
@@ -169,24 +311,10 @@ export function listGitHubCredentials(): DetectedCredential[] {
   const platform = process.platform;
 
   if (platform === "win32") {
-    const result = run("cmdkey", ["/list"]);
-    if (result.exitCode !== 0) return [];
-
-    const credentials: DetectedCredential[] = [];
-    const blocks = result.stdout.split(/\r?\n\s*\r?\n/);
-    for (const block of blocks) {
-      const targetMatch = block.match(/Target:\s*(?:LegacyGeneric:target=)?(.+)/i);
-      const userMatch = block.match(/User:\s*(.+)/i);
-      if (!targetMatch) continue;
-      const target = targetMatch[1]!.trim();
-      const user = userMatch ? userMatch[1]!.trim() : "";
-      // GitHub Desktop credentials match: "GitHub - https://api.github.com/{user}"
-      // Skip git credential manager (git:https://...), gh CLI, VS Code, and parked entries
-      if (/^GitHub - https:\/\/api\.github\.com\//i.test(target)) {
-        credentials.push({ target, user });
-      }
-    }
-    return credentials;
+    const all = win32CredEnumerate("GitHub*");
+    return all
+      .filter((c) => /^GitHub - https:\/\/api\.github\.com\//i.test(c.target))
+      .map((c) => ({ target: c.target, user: c.userName }));
   }
 
   if (platform === "darwin") {
