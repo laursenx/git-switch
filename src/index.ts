@@ -6,8 +6,10 @@ import { removeCommand } from "./commands/remove.js";
 import { statusCommand } from "./commands/status.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { cloneCommand } from "./commands/clone.js";
-import { desktopCommand } from "./commands/desktop.js";
+import { globalCommand } from "./commands/global.js";
+import { desktopCommand } from "./commands/desktop/index.js";
 import { undoCommand, undoListCommand } from "./commands/undo.js";
+import { migrateEmbeddedDesktopProfiles } from "./core/desktop-profiles.js";
 
 const VERSION = "0.1.0";
 
@@ -21,12 +23,17 @@ Usage: git-switch <command> [options]
 Commands:
   add                    Create a new profile (interactive wizard)
   mark [profile-id]      Apply a profile to the current repo
+  global [profile-id]    Set global git identity (~/.gitconfig)
   list                   List all profiles
   remove [profile-id]    Delete a profile
   status                 Show active profile in current repo
   doctor                 Scan ~/projects/ and report unmarked repos
   clone <profile-id> <url> [dir]   Clone a repo with a profile
-  desktop [profile-id]   Switch GitHub Desktop account
+  desktop save             Capture current Desktop session
+  desktop list             List saved Desktop profiles
+  desktop remove [id]      Remove a saved Desktop profile
+  desktop switch [id]      Switch to a Desktop profile
+  desktop link             Link Desktop profile to git-switch profile
   undo                   Restore the most recent snapshot
   undo --list            List all snapshots for current repo
   undo <snapshot-id>     Restore a specific snapshot
@@ -38,6 +45,9 @@ Options:
 }
 
 async function main(): Promise<void> {
+  // Migrate old embedded desktop profiles to separate storage
+  migrateEmbeddedDesktopProfiles();
+
   const args = process.argv.slice(2);
   const command = args[0];
 
@@ -61,6 +71,10 @@ async function main(): Promise<void> {
         await markCommand(args[1]);
         break;
 
+      case "global":
+        await globalCommand(args[1]);
+        break;
+
       case "list":
         await listCommand();
         break;
@@ -82,7 +96,7 @@ async function main(): Promise<void> {
         break;
 
       case "desktop":
-        await desktopCommand(args[1]);
+        await desktopCommand(args.slice(1));
         break;
 
       case "undo":

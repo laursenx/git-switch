@@ -7,6 +7,29 @@ interface KeychainEntry {
   password: string;
 }
 
+const WIN32_CRED_PREAMBLE = `
+Add-Type -Namespace Win32 -Name Cred -MemberDefinition '
+[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+public static extern bool CredRead(string target, int type, int flags, out IntPtr cred);
+[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+public static extern bool CredWrite(ref CREDENTIAL cred, int flags);
+[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+public static extern bool CredDelete(string target, int type, int flags);
+[DllImport("advapi32.dll")]
+public static extern void CredFree(IntPtr cred);
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+public struct CREDENTIAL {
+  public int Flags; public int Type; public string TargetName; public string Comment;
+  public long LastWritten; public int CredentialBlobSize; public IntPtr CredentialBlob;
+  public int Persist; public int AttributeCount; public IntPtr Attributes;
+  public string TargetAlias; public string UserName;
+}';
+`;
+
+function escapePS(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
 function ensureKeychainTool(): void {
   const platform = process.platform;
   if (platform === "darwin") {
@@ -18,13 +41,7 @@ function ensureKeychainTool(): void {
       );
     }
   } else if (platform === "win32") {
-    // cmdkey is built into Windows — no extra modules needed
-    if (!isCommandAvailable("cmdkey")) {
-      throw new DesktopKeychainError(
-        "win32",
-        "'cmdkey' not found — this should be built into Windows",
-      );
-    }
+    // Windows uses P/Invoke to advapi32.dll — no external tools needed
   } else if (platform === "linux") {
     if (!isCommandAvailable("secret-tool")) {
       throw new DesktopKeychainError(
@@ -49,29 +66,17 @@ function readToken(label: string): string {
   }
 
   if (platform === "win32") {
-    // cmdkey /list can show entries but can't extract passwords directly.
-    // Use PowerShell's CredRead via P/Invoke for reading the actual credential.
     const result = runOrThrow("powershell.exe", [
       "-NoProfile",
       "-Command",
-      `Add-Type -Namespace Win32 -Name Cred -MemberDefinition '
-[DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
-public static extern bool CredRead(string target, int type, int flags, out IntPtr cred);
-[DllImport("advapi32.dll")]
-public static extern void CredFree(IntPtr cred);
-[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
-public struct CREDENTIAL {
-  public int Flags; public int Type; public string TargetName; public string Comment;
-  public long LastWritten; public int CredentialBlobSize; public IntPtr CredentialBlob;
-  public int Persist; public int AttributeCount; public IntPtr Attributes;
-  public string TargetAlias; public string UserName;
-}';
+      `${WIN32_CRED_PREAMBLE}
 $ptr=[IntPtr]::Zero;
-if([Win32.Cred]::CredRead("${label.replace(/"/g, '`"')}",1,0,[ref]$ptr)){
+if([Win32.Cred]::CredRead('${escapePS(label)}',1,0,[ref]$ptr)){
   $c=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][Win32.Cred+CREDENTIAL]);
-  $pw=[Runtime.InteropServices.Marshal]::PtrToStringUni($c.CredentialBlob,$c.CredentialBlobSize/2);
+  $bytes=New-Object byte[] $c.CredentialBlobSize;
+  [Runtime.InteropServices.Marshal]::Copy($c.CredentialBlob,$bytes,0,$c.CredentialBlobSize);
   [Win32.Cred]::CredFree($ptr);
-  Write-Output $pw
+  Write-Output ([Convert]::ToBase64String($bytes))
 } else { exit 1 }`,
     ]);
     return result;
@@ -90,7 +95,12 @@ function deleteEntry(label: string): void {
   }
 
   if (platform === "win32") {
-    run("cmdkey", ["/delete", label]);
+    run("powershell.exe", [
+      "-NoProfile",
+      "-Command",
+      `${WIN32_CRED_PREAMBLE}
+[Win32.Cred]::CredDelete('${escapePS(label)}',1,0) | Out-Null`,
+    ]);
     return;
   }
 
@@ -117,10 +127,21 @@ function addEntry(label: string, account: string, token: string): void {
   }
 
   if (platform === "win32") {
-    runOrThrow("cmdkey", [
-      "/generic:" + label,
-      "/user:" + account,
-      "/pass:" + token,
+    runOrThrow("powershell.exe", [
+      "-NoProfile",
+      "-Command",
+      `${WIN32_CRED_PREAMBLE}
+$bytes=[Convert]::FromBase64String('${token}');
+$c=New-Object Win32.Cred+CREDENTIAL;
+$c.Type=1;
+$c.TargetName='${escapePS(label)}';
+$c.UserName='${escapePS(account)}';
+$c.CredentialBlobSize=$bytes.Length;
+$c.CredentialBlob=[Runtime.InteropServices.Marshal]::AllocHGlobal($bytes.Length);
+[Runtime.InteropServices.Marshal]::Copy($bytes,0,$c.CredentialBlob,$bytes.Length);
+$c.Persist=2;
+if(-not [Win32.Cred]::CredWrite([ref]$c,0)){ exit 1 }
+[Runtime.InteropServices.Marshal]::FreeHGlobal($c.CredentialBlob);`,
     ]);
     return;
   }
@@ -138,6 +159,62 @@ function addEntry(label: string, account: string, token: string): void {
   }
 }
 
+export interface DetectedCredential {
+  target: string;
+  user: string;
+}
+
+export function listGitHubCredentials(): DetectedCredential[] {
+  ensureKeychainTool();
+  const platform = process.platform;
+
+  if (platform === "win32") {
+    const result = run("cmdkey", ["/list"]);
+    if (result.exitCode !== 0) return [];
+
+    const credentials: DetectedCredential[] = [];
+    const blocks = result.stdout.split(/\r?\n\s*\r?\n/);
+    for (const block of blocks) {
+      const targetMatch = block.match(/Target:\s*(?:LegacyGeneric:target=)?(.+)/i);
+      const userMatch = block.match(/User:\s*(.+)/i);
+      if (!targetMatch) continue;
+      const target = targetMatch[1]!.trim();
+      const user = userMatch ? userMatch[1]!.trim() : "";
+      // GitHub Desktop credentials match: "GitHub - https://api.github.com/{user}"
+      // Skip git credential manager (git:https://...), gh CLI, VS Code, and parked entries
+      if (/^GitHub - https:\/\/api\.github\.com\//i.test(target)) {
+        credentials.push({ target, user });
+      }
+    }
+    return credentials;
+  }
+
+  if (platform === "darwin") {
+    const result = run("security", [
+      "dump-keychain",
+    ]);
+    if (result.exitCode !== 0) return [];
+
+    const credentials: DetectedCredential[] = [];
+    const entries = result.stdout.split(/keychain:/);
+    for (const entry of entries) {
+      if (!/github/i.test(entry)) continue;
+      const labelMatch = entry.match(/"labl"<blob>="([^"]+)"/);
+      const acctMatch = entry.match(/"acct"<blob>="([^"]+)"/);
+      if (labelMatch) {
+        credentials.push({
+          target: labelMatch[1]!,
+          user: acctMatch ? acctMatch[1]! : "",
+        });
+      }
+    }
+    return credentials;
+  }
+
+  // Linux — secret-tool doesn't have a good list command for filtering
+  return [];
+}
+
 export function readKeychainEntry(label: string): KeychainEntry | null {
   ensureKeychainTool();
   try {
@@ -145,6 +222,36 @@ export function readKeychainEntry(label: string): KeychainEntry | null {
     return { label, account: "", password };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Validate a stored GitHub OAuth token against the GitHub API.
+ * Returns the GitHub username if valid, or null if expired/invalid.
+ */
+export async function validateStoredToken(label: string): Promise<string | null> {
+  const entry = readKeychainEntry(label);
+  if (!entry) return null;
+
+  // Decode the Base64 token to get the raw OAuth token
+  const token = Buffer.from(entry.password, "base64").toString("utf-8");
+  if (!token.startsWith("gho_")) return null;
+
+  try {
+    const resp = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as { login: string };
+      return data.login;
+    }
+    return null;
+  } catch {
+    // Network error — can't validate, assume OK
+    return "unknown";
   }
 }
 

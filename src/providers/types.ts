@@ -32,11 +32,19 @@ export interface ProfileSSH {
   alias: string;
 }
 
-export interface ProfileGitHubDesktop {
-  enabled: boolean;
-  keychain_label?: string;
-  stored_label?: string;
-  app_state_accounts?: unknown[];
+export interface DesktopProfile {
+  id: string;
+  label: string;
+  email: string;
+  keychain_label: string;
+  stored_label: string;
+  app_state_accounts: unknown[];
+  users_json?: string;
+}
+
+export interface DesktopProfilesConfig {
+  version: number;
+  profiles: DesktopProfile[];
 }
 
 export interface Profile {
@@ -44,7 +52,7 @@ export interface Profile {
   label: string;
   git: ProfileGit;
   ssh: ProfileSSH;
-  github_desktop?: ProfileGitHubDesktop;
+  desktop_profile_id?: string;
 }
 
 export interface ProfilesConfig {

@@ -37,7 +37,7 @@ export async function listCommand(): Promise<void> {
 
   for (const p of profiles) {
     const active = activeEmail && p.git.email === activeEmail ? "● " : "  ";
-    const desktop = p.github_desktop?.enabled ? "yes" : "no";
+    const desktop = p.desktop_profile_id ? "yes" : "no";
     const line = [
       active,
       p.id.padEnd(16),

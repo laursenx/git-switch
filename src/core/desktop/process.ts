@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { run } from "../../utils/shell.js";
 
 function getProcessName(): string {
@@ -51,13 +52,34 @@ export function killDesktop(): void {
   }
 
   // Give the process a moment to exit
-  run("sleep", ["1"]);
+  if (process.platform === "win32") {
+    run("powershell.exe", ["-NoProfile", "-Command", "Start-Sleep -Seconds 1"]);
+  } else {
+    run("sleep", ["1"]);
+  }
 }
 
 export function launchDesktop(): void {
+  const platform = process.platform;
+
+  if (platform === "win32") {
+    // Use explorer.exe to launch — ensures proper user session context
+    const localAppData = process.env["LOCALAPPDATA"] || "";
+    const desktopExe = `${localAppData}\\GitHubDesktop\\GitHubDesktop.exe`;
+    const child = spawn("explorer.exe", [desktopExe], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return;
+  }
+
   const { command, args } = getAppLaunchCommand();
-  // Launch detached so it doesn't block
-  run(command, args, { timeout: 5_000 });
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
 }
 
 export function restartDesktop(): void {

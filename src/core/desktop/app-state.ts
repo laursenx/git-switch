@@ -29,6 +29,8 @@ export function readAppStateAccounts(): unknown[] {
  */
 export function writeAppStateAccounts(accounts: unknown[]): void {
   const p = gitDesktopAppStatePath();
+  if (!fs.existsSync(p)) return;
+
   const state = readAppState();
   state.accounts = accounts;
 

@@ -28,14 +28,26 @@ export class OnePasswordProvider implements SSHKeyProvider {
   }
 
   async listKeys(): Promise<SSHKeyItem[]> {
-    const result = run("op", [
+    // Try both category formats: newer CLI uses "SSH Key", older uses "SSH_KEY"
+    let result = run("op", [
       "item",
       "list",
       "--categories",
-      "SSH_KEY",
+      "SSH Key",
       "--format",
       "json",
     ]);
+
+    if (result.exitCode !== 0 && result.stderr.includes("Unknown item category")) {
+      result = run("op", [
+        "item",
+        "list",
+        "--categories",
+        "SSH_KEY",
+        "--format",
+        "json",
+      ]);
+    }
 
     if (result.exitCode !== 0) {
       if (result.stderr.includes("not signed in")) {
@@ -81,7 +93,7 @@ export class OnePasswordProvider implements SSHKeyProvider {
         throw new ProviderError(
           this.id,
           `SSH key "${ref}" not found in 1Password. ` +
-            "Run: op item list --categories SSH_KEY — to see available keys.",
+            'Run: op item list --categories "SSH Key" — to see available keys.',
         );
       }
       throw new ProviderError(

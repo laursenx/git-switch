@@ -3,9 +3,7 @@ import { addProfile } from "../core/profiles.js";
 import { updateSSHConfigForProfiles, writePublicKeyFile } from "../core/ssh-config.js";
 import { listAllProfiles } from "../core/profiles.js";
 import { getAllProviders, getProvider } from "../providers/index.js";
-import { captureDesktopSetup } from "../core/desktop/index.js";
-import { renameKeychainEntry } from "../core/desktop/keychain.js";
-import type { Profile, ProfileGitHubDesktop } from "../providers/types.js";
+import type { Profile } from "../providers/types.js";
 
 function isCancel(value: unknown): value is symbol {
   return prompts.isCancel(value);
@@ -122,88 +120,7 @@ export async function addCommand(): Promise<void> {
   });
   if (isCancel(alias)) { prompts.cancel("Aborted."); process.exit(0); }
 
-  // 9. GitHub Desktop opt-in
-  let desktopConfig: ProfileGitHubDesktop = { enabled: false };
-
-  const enableDesktop = await prompts.confirm({
-    message: "Configure GitHub Desktop switching for this profile?",
-    initialValue: false,
-  });
-  if (isCancel(enableDesktop)) { prompts.cancel("Aborted."); process.exit(0); }
-
-  if (enableDesktop) {
-    await prompts.text({
-      message:
-        "Open GitHub Desktop and sign in with the account for this profile, then press Enter...",
-      placeholder: "Press Enter when ready",
-      validate: () => undefined,
-    });
-
-    const spinner = prompts.spinner();
-    spinner.start("Capturing GitHub Desktop setup...");
-
-    try {
-      // Build a temporary profile to look up
-      const tempProfile: Profile = {
-        id: id as string,
-        label: label as string,
-        git: { name: gitName as string, email: gitEmail as string },
-        ssh: {
-          provider: providerChoice as Profile["ssh"]["provider"],
-          ref: selectedRef,
-          host: host as string,
-          alias: alias as string,
-        },
-      };
-
-      // Save temporarily so captureDesktopSetup can find it
-      addProfile(tempProfile);
-
-      const setup = await captureDesktopSetup(id as string);
-      desktopConfig = {
-        enabled: true,
-        keychain_label: setup.keychain_label,
-        stored_label: setup.stored_label,
-        app_state_accounts: setup.app_state_accounts,
-      };
-
-      // Park the keychain entry
-      renameKeychainEntry(
-        setup.keychain_label,
-        setup.stored_label,
-        gitEmail as string,
-      );
-
-      spinner.stop("GitHub Desktop setup captured.");
-      prompts.log.success(`Found active keychain entry: "${setup.keychain_label}"`);
-      prompts.log.success(`Renamed keychain entry → "${setup.stored_label}"`);
-      prompts.log.info(
-        "GitHub Desktop is now signed out. Run `git-switch desktop " +
-          id +
-          "` to switch back.",
-      );
-
-      // Remove the temporary profile so we can re-add with desktop config
-      const { removeProfile: rmProfile } = await import("../core/profiles.js");
-      rmProfile(id as string);
-    } catch (err) {
-      spinner.stop("GitHub Desktop setup failed.");
-      prompts.log.warn(
-        `Desktop setup failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      prompts.log.info("Continuing without GitHub Desktop support.");
-
-      // Clean up temporary profile if it was added
-      try {
-        const { removeProfile: rmProfile } = await import("../core/profiles.js");
-        rmProfile(id as string);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  // 10. Write profile
+  // 9. Write profile
   const profile: Profile = {
     id: id as string,
     label: label as string,
@@ -217,7 +134,6 @@ export async function addCommand(): Promise<void> {
       host: host as string,
       alias: alias as string,
     },
-    github_desktop: desktopConfig,
   };
 
   addProfile(profile);
@@ -242,5 +158,6 @@ export async function addCommand(): Promise<void> {
     }
   }
 
+  prompts.log.info("To link GitHub Desktop: git-switch desktop link");
   prompts.outro(`Profile "${id}" created successfully!`);
 }

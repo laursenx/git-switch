@@ -10,7 +10,8 @@ import { updateSSHConfigForProfiles } from "../core/ssh-config.js";
 import { takeSnapshot, pruneSnapshots } from "../core/snapshot/index.js";
 import { repoHash } from "../utils/paths.js";
 import { detectCurrentProfile } from "../core/git-config.js";
-import { switchDesktop } from "../core/desktop/index.js";
+import { getDesktopProfile } from "../core/desktop-profiles.js";
+import { switchDesktopToProfile } from "../core/desktop/index.js";
 import type { Profile } from "../providers/types.js";
 
 export async function markCommand(profileId?: string): Promise<void> {
@@ -136,13 +137,22 @@ export async function markCommand(profileId?: string): Promise<void> {
   }
 
   // Handle GitHub Desktop switching
-  if (profile.github_desktop?.enabled) {
-    try {
-      await switchDesktop(profile.id);
-    } catch (err) {
-      prompts.log.warn(
-        `GitHub Desktop switch failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+  if (profile.desktop_profile_id) {
+    const dp = getDesktopProfile(profile.desktop_profile_id);
+    if (dp) {
+      const shouldSwitch = await prompts.confirm({
+        message: `Switch GitHub Desktop to "${dp.label}"?`,
+        initialValue: true,
+      });
+      if (!prompts.isCancel(shouldSwitch) && shouldSwitch) {
+        try {
+          await switchDesktopToProfile(dp);
+        } catch (err) {
+          prompts.log.warn(
+            `GitHub Desktop switch failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
     }
   }
 

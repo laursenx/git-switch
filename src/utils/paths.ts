@@ -18,6 +18,10 @@ export function profilesPath(): string {
   return path.join(configDir(), "profiles.json");
 }
 
+export function desktopProfilesPath(): string {
+  return path.join(configDir(), "desktop-profiles.json");
+}
+
 export function snapshotsDir(): string {
   return path.join(configDir(), "snapshots");
 }
@@ -64,6 +68,36 @@ export function gitDesktopAppStatePath(): string {
   }
   // Linux
   return path.join(home, ".config", "GitHub Desktop", "app-state.json");
+}
+
+export function gitDesktopLocalStorageDir(): string {
+  const platform = process.platform;
+  const home = os.homedir();
+
+  if (platform === "darwin") {
+    return path.join(
+      home,
+      "Library",
+      "Application Support",
+      "GitHub Desktop",
+      "Local Storage",
+      "leveldb",
+    );
+  }
+  if (platform === "win32") {
+    return path.join(
+      process.env["APPDATA"] || path.join(home, "AppData", "Roaming"),
+      "GitHub Desktop",
+      "Local Storage",
+      "leveldb",
+    );
+  }
+  // Linux
+  return path.join(home, ".config", "GitHub Desktop", "Local Storage", "leveldb");
+}
+
+export function globalGitConfigPath(): string {
+  return path.join(os.homedir(), ".gitconfig");
 }
 
 export function projectsDir(): string {
