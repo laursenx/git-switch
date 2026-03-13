@@ -34,7 +34,7 @@ jobs:
 
       - name: Build binary
         run: |
-          bun build src/index.ts --compile --minify --sourcemap --bytecode \
+          bun build src/index.ts --compile --minify --sourcemap \
             --target ${{ matrix.target }} \
             --outfile dist/${{ matrix.artifact }}
 
