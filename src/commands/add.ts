@@ -1,10 +1,16 @@
 import * as prompts from "@clack/prompts";
 import {
+	copyKeychainEntry,
 	listGitHubCredentials,
 	readKeychainEntry,
 	renameKeychainEntry,
 } from "../core/desktop/keychain.js";
-import { readLocalStorageKey } from "../core/desktop/local-storage.js";
+import { tryReadDesktopUsers } from "../core/desktop/local-storage.js";
+import {
+	isDesktopRunning,
+	killDesktop,
+	launchDesktop,
+} from "../core/desktop/process.js";
 import { addDesktopProfile } from "../core/desktop-profiles.js";
 import {
 	addProfile,
@@ -16,6 +22,7 @@ import {
 	writePublicKeyFile,
 } from "../core/ssh-config.js";
 import { getAllProviders, getProvider } from "../providers/index.js";
+import { OnePasswordProvider } from "../providers/onepassword.js";
 import type { DesktopProfile, Profile } from "../providers/types.js";
 import { abortIfCancelled } from "../utils/prompts.js";
 import {
@@ -90,8 +97,62 @@ export async function addCommand(): Promise<void> {
 
 	const provider = getProvider(providerChoice);
 
+	// 5b. 1Password availability check with retry
+	if (provider instanceof OnePasswordProvider) {
+		let diag = provider.getDiagnostic();
+		while (!diag.installed || !diag.signedIn) {
+			if (!diag.installed) {
+				prompts.log.error(
+					"1Password CLI (op) is not installed.\n" +
+						"  Install it from: https://developer.1password.com/docs/cli/get-started/",
+				);
+			} else if (!diag.signedIn) {
+				prompts.log.error(
+					"1Password CLI is installed but not signed in.\n" +
+						"  Run: op signin\n" +
+						"  Docs: https://developer.1password.com/docs/cli/get-started/",
+				);
+			}
+
+			const action = abortIfCancelled(
+				await prompts.select({
+					message: "What would you like to do?",
+					options: [
+						{
+							value: "retry",
+							label: "Try again",
+							hint: "after installing or signing in",
+						},
+						{ value: "cancel", label: "Cancel" },
+					],
+				}),
+			);
+
+			if (action === "cancel") {
+				prompts.cancel("Aborted.");
+				process.exit(0);
+			}
+
+			diag = provider.getDiagnostic();
+		}
+	}
+
 	// 6. Key selection
-	const keys = await provider.listKeys();
+	const listSpinner = prompts.spinner();
+	listSpinner.start(
+		provider instanceof OnePasswordProvider
+			? "Fetching SSH keys from 1Password..."
+			: "Fetching SSH keys...",
+	);
+	let keys: Awaited<ReturnType<typeof provider.listKeys>>;
+	try {
+		keys = await provider.listKeys();
+		listSpinner.stop(`Found ${keys.length} SSH key(s).`);
+	} catch (err) {
+		listSpinner.stop("Failed to fetch SSH keys.");
+		prompts.cancel(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
 	let selectedRef: string;
 
 	if (keys.length === 0) {
@@ -176,21 +237,88 @@ export async function addCommand(): Promise<void> {
 
 	// 13. Offer to capture GitHub Desktop session
 	try {
-		const credentials = listGitHubCredentials();
-		if (credentials.length > 0) {
-			const linkDesktop = abortIfCancelled(
+		let credentials = listGitHubCredentials();
+
+		if (credentials.length === 0) {
+			// No Desktop account detected — ask if they want to link one
+			const wantDesktop = abortIfCancelled(
 				await prompts.confirm({
 					message:
-						"GitHub Desktop detected — save current session and link to this profile?",
-					initialValue: true,
+						"No GitHub Desktop account detected — would you like to link one?",
+					initialValue: false,
 				}),
 			);
 
-			if (linkDesktop) {
+			if (wantDesktop) {
+				prompts.log.info(
+					"Please sign in to GitHub Desktop, then come back here.",
+				);
+
+				while (credentials.length === 0) {
+					const action = abortIfCancelled(
+						await prompts.select({
+							message: "What would you like to do?",
+							options: [
+								{
+									value: "retry",
+									label: "Check again",
+									hint: "after signing in to GitHub Desktop",
+								},
+								{ value: "skip", label: "Skip" },
+							],
+						}),
+					);
+
+					if (action === "skip") break;
+					credentials = listGitHubCredentials();
+
+					if (credentials.length === 0) {
+						prompts.log.warn("Still no GitHub Desktop account detected.");
+					}
+				}
+			}
+		}
+
+		if (credentials.length > 0) {
+			const intent = abortIfCancelled(
+				await prompts.select({
+					message: "GitHub Desktop account detected",
+					options: [
+						{
+							value: "current",
+							label: "Use current account",
+							hint: "save and link to this profile",
+						},
+						{
+							value: "another",
+							label: "Sign in to another account",
+							hint: "parks current session, relaunches Desktop",
+						},
+						{ value: "skip", label: "Skip Desktop setup" },
+					],
+				}),
+			);
+
+			if (intent !== "skip") {
+				prompts.note(
+					"Do NOT sign out of GitHub Desktop manually.\n" +
+						"git-switch manages sessions by moving credentials.\n" +
+						"Signing out manually will invalidate the saved token.",
+					"Important",
+				);
+
+				if (intent === "another") {
+					// Save current account first so it's not lost
+					prompts.log.step("First, let's save the current account.");
+				}
+
+				// Select and save the current credential
 				let keychainLabel: string;
 				if (credentials.length === 1) {
 					keychainLabel = credentials[0]?.target;
-					prompts.log.info(`Using credential: ${keychainLabel}`);
+					prompts.log.info(
+						`Using credential: ${credentials[0]?.user || keychainLabel}`,
+					);
 				} else {
 					keychainLabel = abortIfCancelled(
 						await prompts.select({
@@ -205,23 +333,23 @@ export async function addCommand(): Promise<void> {
 				}
 
 				const entry = readKeychainEntry(keychainLabel);
-				if (entry) {
-					const storedLabel = makeStoredLabel(id, gitEmail);
+				if (!entry) {
+					prompts.log.warn(
+						"Could not read credential — skipping Desktop setup.",
+					);
+				} else {
+					const desktopId = `${id}-desktop`;
+					const storedLabel = makeStoredLabel(desktopId, gitEmail);
 
-					// Capture LevelDB users data before parking
-					let usersJson: string | undefined;
-					try {
-						const users = readLocalStorageKey("users");
-						if (users) usersJson = users;
-					} catch {}
+					const usersJson = tryReadDesktopUsers();
 
-					const parkSpinner = prompts.spinner();
-					parkSpinner.start("Parking keychain entry...");
-					renameKeychainEntry(keychainLabel, storedLabel, gitEmail);
-					parkSpinner.stop("Keychain entry parked.");
+					const saveSpinner = prompts.spinner();
+					saveSpinner.start("Saving credential...");
+					copyKeychainEntry(keychainLabel, storedLabel, gitEmail);
+					saveSpinner.stop("Credential saved.");
 
 					const dp: DesktopProfile = {
-						id: `${id}-desktop`,
+						id: desktopId,
 						label,
 						email: gitEmail,
 						keychain_label: keychainLabel,
@@ -231,11 +359,117 @@ export async function addCommand(): Promise<void> {
 
 					addDesktopProfile(dp);
 					updateProfileDesktopLink(id, dp.id);
-					prompts.log.success(`Desktop profile saved and linked.`);
-				} else {
-					prompts.log.warn(
-						"Could not read credential — skipping Desktop setup.",
-					);
+					prompts.log.success("Desktop profile saved and linked.");
+
+					// "Sign in to another" — park, relaunch, wait for new credential
+					if (intent === "another") {
+						const parkSpinner = prompts.spinner();
+						parkSpinner.start("Parking current session...");
+						renameKeychainEntry(dp.keychain_label, dp.stored_label, dp.email);
+						parkSpinner.stop("Current session parked.");
+
+						if (isDesktopRunning()) {
+							killDesktop();
+						}
+						launchDesktop();
+
+						prompts.log.info(
+							"GitHub Desktop has been relaunched.\n" +
+								"  Please sign in with another account, then come back here.",
+						);
+
+						let newCredentials = listGitHubCredentials();
+
+						while (newCredentials.length === 0) {
+							const action = abortIfCancelled(
+								await prompts.select({
+									message: "What would you like to do?",
+									options: [
+										{
+											value: "retry",
+											label: "Check again",
+											hint: "after signing in to GitHub Desktop",
+										},
+										{ value: "skip", label: "Skip" },
+									],
+								}),
+							);
+
+							if (action === "skip") {
+								// Restore the parked credential
+								renameKeychainEntry(
+									dp.stored_label,
+									dp.keychain_label,
+									dp.email,
+								);
+								prompts.log.info("Previous session restored.");
+								break;
+							}
+
+							newCredentials = listGitHubCredentials();
+
+							if (newCredentials.length === 0) {
+								prompts.log.warn("No new GitHub Desktop account detected yet.");
+							}
+						}
+
+						if (newCredentials.length > 0) {
+							const newLabel =
+								newCredentials.length === 1
+									? newCredentials[0]?.target
+									: abortIfCancelled(
+											await prompts.select({
+												message: "Select the new GitHub credential to save",
+												options: newCredentials.map((c) => ({
+													value: c.target,
+													label: c.target,
+													hint: c.user || undefined,
+												})),
+											}),
+										);
+
+							const newEntry = readKeychainEntry(newLabel);
+							if (newEntry) {
+								const newDesktopId = abortIfCancelled(
+									await prompts.text({
+										message:
+											"Desktop profile ID for the new account (slug, no spaces)",
+										placeholder: `${id}-desktop-2`,
+										validate: validateProfileId,
+									}),
+								);
+								const newEmail = abortIfCancelled(
+									await prompts.text({
+										message: "GitHub account email for the new account",
+										placeholder: "user@example.com",
+										validate: validateEmail,
+									}),
+								);
+								const newStoredLabel = makeStoredLabel(newDesktopId, newEmail);
+
+								const newUsersJson = tryReadDesktopUsers();
+
+								const newSaveSpinner = prompts.spinner();
+								newSaveSpinner.start("Saving new credential...");
+								copyKeychainEntry(newLabel, newStoredLabel, newEmail);
+								newSaveSpinner.stop("New credential saved.");
+
+								const newDp: DesktopProfile = {
+									id: newDesktopId,
+									label: `${label} (2)`,
+									email: newEmail,
+									keychain_label: newLabel,
+									stored_label: newStoredLabel,
+									users_json: newUsersJson,
+								};
+
+								addDesktopProfile(newDp);
+								// Link the NEW profile to the git-switch profile
+								updateProfileDesktopLink(id, newDp.id);
+								prompts.log.success("New Desktop profile saved and linked.");
+							}
+						}
+					}
 				}
 			}
 		}

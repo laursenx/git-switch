@@ -2,10 +2,10 @@ import { Command } from "commander";
 import pkg from "../package.json";
 import { addCommand } from "./commands/add.js";
 import { cloneCommand } from "./commands/clone.js";
+import { desktopAddCommand } from "./commands/desktop/add.js";
 import { desktopLinkCommand } from "./commands/desktop/link.js";
 import { desktopListCommand } from "./commands/desktop/list.js";
 import { desktopRemoveCommand } from "./commands/desktop/remove.js";
-import { desktopSaveCommand } from "./commands/desktop/save.js";
 import { desktopSwitchCommand } from "./commands/desktop/switch.js";
 import { globalCommand } from "./commands/global.js";
 import { listCommand } from "./commands/list.js";
@@ -14,6 +14,7 @@ import { removeCommand } from "./commands/remove.js";
 import { scanCommand } from "./commands/scan.js";
 import { statusCommand } from "./commands/status.js";
 import { undoCommand, undoListCommand } from "./commands/undo.js";
+import { uninstallCommand } from "./commands/uninstall.js";
 
 const VERSION = pkg.version;
 
@@ -84,9 +85,9 @@ const desktop = program
 	.command("desktop")
 	.description("GitHub Desktop profile management");
 desktop
-	.command("save")
-	.description("Capture current Desktop session")
-	.action(wrap(desktopSaveCommand));
+	.command("add")
+	.description("Add a GitHub Desktop account")
+	.action(wrap(desktopAddCommand));
 desktop
 	.command("list")
 	.description("List saved Desktop profiles")
@@ -106,6 +107,10 @@ desktop
 	.description("Link Desktop profile to git-switch profile")
 	.action(wrap(desktopLinkCommand));
 
+program
+	.command("uninstall")
+	.description("Uninstall git-switch from this machine")
+	.action(wrap(uninstallCommand));
 program
 	.command("undo")
 	.description("Restore from snapshot")

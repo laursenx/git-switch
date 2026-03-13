@@ -326,6 +326,19 @@ export async function validateStoredToken(
 }
 
 /**
+ * Copy a keychain entry to a new label, keeping the original in place.
+ */
+export function copyKeychainEntry(
+	sourceLabel: string,
+	destLabel: string,
+	account: string,
+): void {
+	ensureKeychainTool();
+	const token = readToken(sourceLabel);
+	addEntry(destLabel, account, token);
+}
+
+/**
  * Rename a keychain entry by deleting the old one and adding a new one with the same password.
  */
 export function renameKeychainEntry(

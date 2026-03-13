@@ -26,6 +26,16 @@ export class DesktopKeychainError extends GitSwitchError {
 	}
 }
 
+export class DesktopTokenExpiredError extends GitSwitchError {
+	constructor(
+		public readonly profileId: string,
+		public readonly profileLabel: string,
+	) {
+		super(`Token for "${profileLabel}" has expired or been revoked.`);
+		this.name = "DesktopTokenExpiredError";
+	}
+}
+
 export class SnapshotError extends GitSwitchError {
 	constructor(message: string) {
 		super(message);

@@ -142,6 +142,6 @@ Write-Host ""
 Write-Host "  Location: " -NoNewline
 Write-Host $DestPath -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Restart your terminal, then run:" -ForegroundColor DarkGray
+Write-Host "  You may need to restart your terminal, then run:" -ForegroundColor DarkGray
 Write-Host "  git-switch --help" -ForegroundColor White
 Write-Host ""

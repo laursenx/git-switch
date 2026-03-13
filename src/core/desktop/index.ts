@@ -1,6 +1,9 @@
 import * as log from "@clack/prompts";
 import type { DesktopProfile } from "../../providers/types.js";
-import { GitSwitchError } from "../../utils/errors.js";
+import {
+	DesktopTokenExpiredError,
+	GitSwitchError,
+} from "../../utils/errors.js";
 import { listAllDesktopProfiles } from "../desktop-profiles.js";
 import { pruneSnapshots, takeSnapshot } from "../snapshot/index.js";
 import {
@@ -40,10 +43,7 @@ export async function switchDesktopToProfile(
 
 		const validUser = await validateStoredToken(target.stored_label);
 		if (validUser === null) {
-			throw new GitSwitchError(
-				`Token for "${target.label}" has expired or been revoked.\n` +
-					`Sign into this account in GitHub Desktop and re-run: git-switch desktop save`,
-			);
+			throw new DesktopTokenExpiredError(target.id, target.label);
 		}
 	}
 

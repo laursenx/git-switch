@@ -12,19 +12,28 @@ export class OnePasswordProvider implements SSHKeyProvider {
 	id = "1password";
 	name = "1Password";
 
-	async isAvailable(): Promise<boolean> {
+	getDiagnostic(): { installed: boolean; signedIn: boolean } {
 		const versionCheck = run("op", ["--version"]);
-		if (versionCheck.exitCode !== 0) return false;
+		if (versionCheck.exitCode !== 0) {
+			return { installed: false, signedIn: false };
+		}
 
 		const accountCheck = run("op", ["account", "list", "--format", "json"]);
-		if (accountCheck.exitCode !== 0) return false;
+		if (accountCheck.exitCode !== 0) {
+			return { installed: true, signedIn: false };
+		}
 
 		try {
 			const accounts = JSON.parse(accountCheck.stdout) as unknown[];
-			return accounts.length > 0;
+			return { installed: true, signedIn: accounts.length > 0 };
 		} catch {
-			return false;
+			return { installed: true, signedIn: false };
 		}
+	}
+
+	async isAvailable(): Promise<boolean> {
+		const diag = this.getDiagnostic();
+		return diag.installed && diag.signedIn;
 	}
 
 	async listKeys(): Promise<SSHKeyItem[]> {
@@ -73,7 +82,7 @@ export class OnePasswordProvider implements SSHKeyProvider {
 		}
 
 		return items.map((item) => ({
-			ref: item.title,
+			ref: item.id,
 			label: item.title,
 			vault: item.vault?.name,
 		}));

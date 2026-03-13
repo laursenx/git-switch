@@ -374,6 +374,18 @@ function getLevelDbDir(): string {
  * @param key - The localStorage key (without the `_file://\\0\\1` prefix)
  * @returns The value string, or null if the key is not found
  */
+/**
+ * Try to read the "users" key from Desktop's localStorage.
+ * Returns the JSON string or undefined if not available.
+ */
+export function tryReadDesktopUsers(): string | undefined {
+	try {
+		return readLocalStorageKey("users") ?? undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export function readLocalStorageKey(key: string): string | null {
 	const dir = getLevelDbDir();
 	const fullKey = `_file://\x00\x01${key}`;

@@ -174,6 +174,6 @@ printf "  ${GREEN}└───────────────────�
 printf "\n"
 printf "  Location: ${CYAN}%s/git-switch${RESET}\n" "$INSTALL_DIR"
 printf "\n"
-printf "  ${DIM}Restart your terminal, then run:${RESET}\n"
+printf "  ${DIM}You may need to restart your terminal, then run:${RESET}\n"
 printf "  ${BOLD}git-switch --help${RESET}\n"
 printf "\n"
