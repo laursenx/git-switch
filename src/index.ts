@@ -16,8 +16,72 @@ import { scanCommand } from "./commands/scan.js";
 import { statusCommand } from "./commands/status.js";
 import { undoCommand, undoListCommand } from "./commands/undo.js";
 import { uninstallCommand } from "./commands/uninstall.js";
+import { listAllProfiles } from "./core/profiles.js";
 
 const VERSION = pkg.version;
+
+const DIM = "\x1b[2m";
+const CYAN = "\x1b[36m";
+const GREEN = "\x1b[32m";
+const YELLOW = "\x1b[33m";
+const BOLD = "\x1b[1m";
+const R = "\x1b[0m";
+
+function printHelp() {
+	const profiles = listAllProfiles();
+	const count = profiles.length;
+
+	console.log("");
+	console.log(`  ${BOLD}git-switch${R} ${DIM}v${VERSION}${R}`);
+	console.log(`  ${DIM}Git identity & SSH key profile switcher${R}`);
+	console.log("");
+
+	if (count === 0) {
+		console.log(`  ${YELLOW}No profiles configured yet.${R}`);
+		console.log(`  Get started by creating your first profile:`);
+		console.log("");
+		console.log(`    ${CYAN}gs add${R}`);
+		console.log("");
+	} else {
+		console.log(`  ${GREEN}${count} profile(s)${R} configured`);
+		console.log("");
+	}
+
+	console.log(`  ${BOLD}Getting started${R}`);
+	console.log(`    ${CYAN}add${R}          Create a new profile ${DIM}(interactive wizard)${R}`);
+	console.log(`    ${CYAN}list${R}         List all profiles`);
+	console.log(`    ${CYAN}remove${R}       Delete a profile`);
+	console.log("");
+
+	console.log(`  ${BOLD}Using profiles${R}`);
+	console.log(`    ${CYAN}mark${R}         Apply a profile to the current repo`);
+	console.log(`    ${CYAN}global${R}       Set global git identity ${DIM}(~/.gitconfig)${R}`);
+	console.log(`    ${CYAN}status${R}       Show active profile in current repo`);
+	console.log(`    ${CYAN}clone${R}        Clone a repo with a profile applied`);
+	console.log(`    ${CYAN}scan${R}         Find repos without a configured identity`);
+	console.log("");
+
+	console.log(`  ${BOLD}GitHub Desktop${R}`);
+	console.log(`    ${CYAN}desktop add${R}      Save a Desktop account`);
+	console.log(`    ${CYAN}desktop switch${R}   Switch Desktop to a saved account`);
+	console.log(`    ${CYAN}desktop list${R}     List saved Desktop profiles`);
+	console.log(`    ${CYAN}desktop remove${R}   Remove a saved Desktop profile`);
+	console.log(`    ${CYAN}desktop reauth${R}   Re-authenticate an expired profile`);
+	console.log(`    ${CYAN}desktop link${R}     Link Desktop profile to git-switch profile`);
+	console.log("");
+
+	console.log(`  ${BOLD}Maintenance${R}`);
+	console.log(`    ${CYAN}undo${R}         Restore from snapshot`);
+	console.log(`    ${CYAN}uninstall${R}    Uninstall git-switch`);
+	console.log("");
+
+	if (count === 0) {
+		console.log(`  ${DIM}Typical workflow:  gs add  →  gs mark  →  done${R}`);
+	} else {
+		console.log(`  ${DIM}Shortcut: ${BOLD}gs${R}${DIM} is an alias for ${BOLD}git-switch${R}`);
+	}
+	console.log("");
+}
 
 // biome-ignore lint/suspicious/noExplicitAny: Commander.js action callbacks have heterogeneous argument types
 type ActionFn = (...args: any[]) => Promise<void>;
@@ -37,7 +101,10 @@ const program = new Command();
 program
 	.name("git-switch")
 	.description("Git identity and SSH key profile switcher")
-	.version(VERSION);
+	.version(VERSION)
+	.configureHelp({ showGlobalOptions: false })
+	.helpCommand(false)
+	.addHelpCommand(false);
 
 program
 	.command("add")
@@ -131,5 +198,16 @@ program
 			}
 		}),
 	);
+
+program.on("option:help", () => {
+	printHelp();
+	process.exit(0);
+});
+
+const parsed = program.parseOptions(process.argv.slice(2));
+if (parsed.operands.length === 0 && !parsed.unknown.includes("--version") && !parsed.unknown.includes("-V")) {
+	printHelp();
+	process.exit(0);
+}
 
 program.parse();
