@@ -9,7 +9,7 @@ import { ensureGitRepo } from "../utils/prompts.js";
 import { run } from "../utils/shell.js";
 
 export async function statusCommand(): Promise<void> {
-	prompts.intro("git-switch status — Current repo profile");
+	prompts.intro("git-switch status - Current repo profile");
 
 	const { gitDir, repoRoot } = ensureGitRepo();
 

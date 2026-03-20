@@ -31,7 +31,7 @@ export async function cloneCommand(
 	gitUrl?: string,
 	targetDir?: string,
 ): Promise<void> {
-	prompts.intro("git-switch clone — Clone with profile");
+	prompts.intro("git-switch clone - Clone with profile");
 
 	const profile = await selectProfile(
 		profileId,

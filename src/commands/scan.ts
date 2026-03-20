@@ -48,7 +48,7 @@ function findGitRepos(dir: string, maxDepth: number): string[] {
 }
 
 export async function scanCommand(): Promise<void> {
-	prompts.intro("git-switch scan — Scan for unconfigured repos");
+	prompts.intro("git-switch scan - Scan for unconfigured repos");
 
 	const profiles = listAllProfiles();
 	const scanDir = process.cwd();
@@ -143,16 +143,16 @@ export async function scanCommand(): Promise<void> {
 		const rel = path.relative(scanDir, status.path);
 		switch (status.status) {
 			case "ok":
-				prompts.log.success(`  ${rel} — ${status.profileId} (${status.email})`);
+				prompts.log.success(`  ${rel} - ${status.profileId} (${status.email})`);
 				break;
 			case "unmarked":
 				prompts.log.warn(
-					`  ${rel} — no profile (using: ${status.email || "unknown"})`,
+					`  ${rel} - no profile (using: ${status.email || "unknown"})`,
 				);
 				break;
 			case "out_of_sync":
 				prompts.log.error(
-					`  ${rel} — ${status.profileId} (submodules out of sync)`,
+					`  ${rel} - ${status.profileId} (submodules out of sync)`,
 				);
 				break;
 		}

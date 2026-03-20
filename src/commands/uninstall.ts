@@ -81,7 +81,7 @@ export async function uninstallCommand(): Promise<void> {
 	);
 
 	if (!confirm) {
-		prompts.cancel("Uninstall cancelled.");
+		prompts.cancel("Aborted.");
 		process.exit(0);
 	}
 

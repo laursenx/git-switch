@@ -124,8 +124,12 @@ try {
 
 # Create gs.exe alias (copy binary)
 $AliasPath = Join-Path $InstallDir "gs.exe"
-Copy-Item $DestPath $AliasPath -Force
-Write-Success "Created gs shortcut"
+try {
+  Copy-Item $DestPath $AliasPath -Force -ErrorAction Stop
+  Write-Success "Created gs shortcut"
+} catch {
+  Write-Step "gs shortcut in use - will update on next restart"
+}
 
 # Add to PATH
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")

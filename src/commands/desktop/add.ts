@@ -94,7 +94,7 @@ async function selectCredentialLabel(
 	}
 	return abortIfCancelled(
 		await prompts.select({
-			message: "Multiple accounts detected — select one to save",
+			message: "Multiple accounts detected - select one to save",
 			options: credentials.map((c) => ({
 				value: c.target,
 				label: c.target,
@@ -105,7 +105,7 @@ async function selectCredentialLabel(
 }
 
 export async function desktopAddCommand(): Promise<void> {
-	prompts.intro("git-switch desktop add — Add a GitHub Desktop account");
+	prompts.intro("git-switch desktop add - Add a GitHub Desktop account");
 
 	prompts.note(
 		"Do NOT sign out of GitHub Desktop manually.\n" +
@@ -159,7 +159,7 @@ export async function desktopAddCommand(): Promise<void> {
 		);
 	}
 
-	// Credential detected — ask what to do
+	// Credential detected - ask what to do
 	const intent = abortIfCancelled(
 		await prompts.select({
 			message: "GitHub Desktop account detected",
@@ -271,7 +271,6 @@ export async function desktopAddCommand(): Promise<void> {
 		);
 
 		if (action === "cancel") {
-			// Restore all parked credentials before exiting
 			for (const profile of profilesToRestore) {
 				renameKeychainEntry(
 					profile.stored_label,
@@ -279,7 +278,8 @@ export async function desktopAddCommand(): Promise<void> {
 					profile.email,
 				);
 			}
-			prompts.cancel("Aborted. Previous session(s) restored.");
+			prompts.log.info("Previous session(s) restored.");
+			prompts.cancel("Aborted.");
 			process.exit(0);
 		}
 

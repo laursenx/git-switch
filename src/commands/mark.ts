@@ -16,7 +16,7 @@ import {
 } from "../utils/prompts.js";
 
 export async function markCommand(profileId?: string): Promise<void> {
-	prompts.intro("git-switch mark — Apply profile to current repo");
+	prompts.intro("git-switch mark - Apply profile to current repo");
 
 	const profile = await selectProfile(profileId, "Select profile to apply");
 

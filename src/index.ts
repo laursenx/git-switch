@@ -1,3 +1,4 @@
+import * as prompts from "@clack/prompts";
 import { Command } from "commander";
 import pkg from "../package.json";
 import { addCommand } from "./commands/add.js";
@@ -16,71 +17,70 @@ import { scanCommand } from "./commands/scan.js";
 import { statusCommand } from "./commands/status.js";
 import { undoCommand, undoListCommand } from "./commands/undo.js";
 import { uninstallCommand } from "./commands/uninstall.js";
+import { detectCurrentProfile, getGitDir } from "./core/git-config.js";
 import { listAllProfiles } from "./core/profiles.js";
+import { run } from "./utils/shell.js";
 
 const VERSION = pkg.version;
 
-const DIM = "\x1b[2m";
-const CYAN = "\x1b[36m";
-const GREEN = "\x1b[32m";
-const YELLOW = "\x1b[33m";
-const BOLD = "\x1b[1m";
-const R = "\x1b[0m";
+const ansi = {
+	dim: "\x1b[2m",
+	cyan: "\x1b[36m",
+	green: "\x1b[32m",
+	yellow: "\x1b[33m",
+	bold: "\x1b[1m",
+	reset: "\x1b[0m",
+} as const;
 
 function printHelp() {
-	const profiles = listAllProfiles();
-	const count = profiles.length;
+	const count = listAllProfiles().length;
+	const { dim: d, cyan: c, green: g, yellow: y, bold: b, reset: r } = ansi;
 
-	console.log("");
-	console.log(`  ${BOLD}git-switch${R} ${DIM}v${VERSION}${R}`);
-	console.log(`  ${DIM}Git identity & SSH key profile switcher${R}`);
-	console.log("");
+	const statusLine =
+		count === 0
+			? [`  ${y}No profiles configured yet.${r}`, `  Get started by creating your first profile:`, "", `    ${c}gs add${r}`, ""]
+			: [`  ${g}${count} profile(s)${r} configured`, ""];
 
-	if (count === 0) {
-		console.log(`  ${YELLOW}No profiles configured yet.${R}`);
-		console.log(`  Get started by creating your first profile:`);
-		console.log("");
-		console.log(`    ${CYAN}gs add${R}`);
-		console.log("");
-	} else {
-		console.log(`  ${GREEN}${count} profile(s)${R} configured`);
-		console.log("");
-	}
+	const footer =
+		count === 0
+			? `  ${d}Typical workflow:  gs add  →  gs mark  →  done${r}`
+			: `  ${d}Shortcut: ${b}gs${r}${d} is an alias for ${b}git-switch${r}`;
 
-	console.log(`  ${BOLD}Getting started${R}`);
-	console.log(`    ${CYAN}add${R}          Create a new profile ${DIM}(interactive wizard)${R}`);
-	console.log(`    ${CYAN}list${R}         List all profiles`);
-	console.log(`    ${CYAN}remove${R}       Delete a profile`);
-	console.log("");
+	const lines = [
+		"",
+		`  ${c}⇄${r} ${b}git-switch${r} ${d}v${VERSION}${r}`,
+		`  ${d}Git identity & SSH key profile switcher${r}`,
+		"",
+		...statusLine,
+		`  ${b}Getting started${r}`,
+		`    ${c}add${r}          Create a new profile ${d}(interactive wizard)${r}`,
+		`    ${c}list${r}         List all profiles`,
+		`    ${c}remove${r}       Delete a profile`,
+		"",
+		`  ${b}Using profiles${r}`,
+		`    ${c}mark${r}         Apply a profile to the current repo`,
+		`    ${c}global${r}       Set global git identity ${d}(~/.gitconfig)${r}`,
+		`    ${c}status${r}       Show active profile in current repo`,
+		`    ${c}clone${r}        Clone a repo with a profile applied`,
+		`    ${c}scan${r}         Find repos without a configured identity`,
+		"",
+		`  ${b}GitHub Desktop${r}`,
+		`    ${c}desktop add${r}      Save a Desktop account`,
+		`    ${c}desktop switch${r}   Switch Desktop to a saved account`,
+		`    ${c}desktop list${r}     List saved Desktop profiles`,
+		`    ${c}desktop remove${r}   Remove a saved Desktop profile`,
+		`    ${c}desktop reauth${r}   Re-authenticate an expired profile`,
+		`    ${c}desktop link${r}     Link Desktop profile to git-switch profile`,
+		"",
+		`  ${b}Maintenance${r}`,
+		`    ${c}undo${r}         Restore from snapshot`,
+		`    ${c}uninstall${r}    Uninstall git-switch`,
+		"",
+		footer,
+		"",
+	];
 
-	console.log(`  ${BOLD}Using profiles${R}`);
-	console.log(`    ${CYAN}mark${R}         Apply a profile to the current repo`);
-	console.log(`    ${CYAN}global${R}       Set global git identity ${DIM}(~/.gitconfig)${R}`);
-	console.log(`    ${CYAN}status${R}       Show active profile in current repo`);
-	console.log(`    ${CYAN}clone${R}        Clone a repo with a profile applied`);
-	console.log(`    ${CYAN}scan${R}         Find repos without a configured identity`);
-	console.log("");
-
-	console.log(`  ${BOLD}GitHub Desktop${R}`);
-	console.log(`    ${CYAN}desktop add${R}      Save a Desktop account`);
-	console.log(`    ${CYAN}desktop switch${R}   Switch Desktop to a saved account`);
-	console.log(`    ${CYAN}desktop list${R}     List saved Desktop profiles`);
-	console.log(`    ${CYAN}desktop remove${R}   Remove a saved Desktop profile`);
-	console.log(`    ${CYAN}desktop reauth${R}   Re-authenticate an expired profile`);
-	console.log(`    ${CYAN}desktop link${R}     Link Desktop profile to git-switch profile`);
-	console.log("");
-
-	console.log(`  ${BOLD}Maintenance${R}`);
-	console.log(`    ${CYAN}undo${R}         Restore from snapshot`);
-	console.log(`    ${CYAN}uninstall${R}    Uninstall git-switch`);
-	console.log("");
-
-	if (count === 0) {
-		console.log(`  ${DIM}Typical workflow:  gs add  →  gs mark  →  done${R}`);
-	} else {
-		console.log(`  ${DIM}Shortcut: ${BOLD}gs${R}${DIM} is an alias for ${BOLD}git-switch${R}`);
-	}
-	console.log("");
+	console.log(lines.join("\n"));
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Commander.js action callbacks have heterogeneous argument types
@@ -90,11 +90,82 @@ function wrap(fn: ActionFn): ActionFn {
 		try {
 			await fn(...args);
 		} catch (err) {
-			const prompts = await import("@clack/prompts");
 			prompts.cancel(err instanceof Error ? err.message : String(err));
 			process.exit(1);
 		}
 	};
+}
+
+const hubActions: Record<string, () => Promise<void> | void> = {
+	global: () => globalCommand(),
+	mark: () => markCommand(),
+	status: () => statusCommand(),
+	list: () => listCommand(),
+	add: () => addCommand(),
+	desktop: () => desktopSwitchCommand(),
+	help: () => printHelp(),
+};
+
+async function interactiveHub(): Promise<void> {
+	const profiles = listAllProfiles();
+
+	if (profiles.length === 0) {
+		printHelp();
+		return;
+	}
+
+	let repoProfile: string | undefined;
+	let globalIdentity: string | undefined;
+	try {
+		const gitDir = getGitDir();
+		const current = detectCurrentProfile(`${gitDir}/config`);
+		if (current.email) {
+			const matched = profiles.find((p) => p.git.email === current.email);
+			repoProfile = matched ? `${matched.label} (${matched.id})` : `${current.name} <${current.email}>`;
+		}
+	} catch (_) {}
+
+	try {
+		const globalName = run("git", ["config", "--global", "user.name"]).stdout;
+		const globalEmail = run("git", ["config", "--global", "user.email"]).stdout;
+		if (globalEmail) {
+			const matched = profiles.find((p) => p.git.email === globalEmail);
+			globalIdentity = matched ? `${matched.label} (${matched.id})` : `${globalName} <${globalEmail}>`;
+		}
+	} catch (_) {}
+
+	const { bold: b, dim: d, cyan: c, reset: r } = ansi;
+	const header = [
+		"",
+		`  ${c}⇄${r} ${b}git-switch${r} ${d}v${VERSION}${r}`,
+		globalIdentity ? `  ${d}Global: ${globalIdentity}${r}` : null,
+		repoProfile ? `  ${d}Repo:   ${repoProfile}${r}` : null,
+		"",
+	]
+		.filter((line) => line !== null)
+		.join("\n");
+	console.log(header);
+
+	const action = await prompts.select({
+		message: "What would you like to do?",
+		options: [
+			{ value: "global" as const, label: "Switch global identity", hint: "~/.gitconfig" },
+			{ value: "mark" as const, label: "Mark this repo", hint: "set repo-level identity" },
+			{ value: "status" as const, label: "View status", hint: "current repo profile" },
+			{ value: "list" as const, label: "List profiles" },
+			{ value: "add" as const, label: "Add a new profile" },
+			{ value: "desktop" as const, label: "GitHub Desktop", hint: "switch Desktop account" },
+			{ value: "help" as const, label: "Show all commands" },
+		],
+	});
+
+	if (prompts.isCancel(action)) {
+		console.log("");
+		return;
+	}
+
+	console.log("");
+	await hubActions[action]?.();
 }
 
 const program = new Command();
@@ -199,15 +270,20 @@ program
 		}),
 	);
 
-program.on("option:help", () => {
-	printHelp();
-	process.exit(0);
-});
+const rawArgs = process.argv.slice(2);
+const hasHelp = rawArgs.includes("--help") || rawArgs.includes("-h");
+const hasVersion = rawArgs.includes("--version") || rawArgs.includes("-V");
+const parsed = program.parseOptions(rawArgs);
+const hasCommand = parsed.operands.length > 0;
 
-const parsed = program.parseOptions(process.argv.slice(2));
-if (parsed.operands.length === 0 && !parsed.unknown.includes("--version") && !parsed.unknown.includes("-V")) {
+if (hasHelp && !hasCommand) {
 	printHelp();
 	process.exit(0);
+} else if (!hasCommand && !hasVersion) {
+	interactiveHub().catch((err) => {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	});
+} else {
+	program.parse();
 }
-
-program.parse();

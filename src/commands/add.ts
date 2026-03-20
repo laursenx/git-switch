@@ -34,7 +34,7 @@ import {
 } from "../utils/validation.js";
 
 export async function addCommand(): Promise<void> {
-	prompts.intro("git-switch add — Create a new profile");
+	prompts.intro("git-switch add - Create a new profile");
 
 	// 1. Profile ID
 	const id = abortIfCancelled(
@@ -130,7 +130,7 @@ export async function addCommand(): Promise<void> {
 
 			if (action === "cancel") {
 				prompts.cancel("Aborted.");
-				process.exit(0);
+			process.exit(0);
 			}
 
 			diag = provider.getDiagnostic();
@@ -247,11 +247,11 @@ export async function addCommand(): Promise<void> {
 		);
 
 		if (credentials.length === 0) {
-			// No Desktop account detected — ask if they want to link one
+			// No Desktop account detected - ask if they want to link one
 			const wantDesktop = abortIfCancelled(
 				await prompts.confirm({
 					message:
-						"No GitHub Desktop account detected — would you like to link one?",
+						"No GitHub Desktop account detected - would you like to link one?",
 					initialValue: false,
 				}),
 			);
@@ -352,7 +352,7 @@ export async function addCommand(): Promise<void> {
 				const entry = readKeychainEntry(keychainLabel);
 				if (!entry) {
 					prompts.log.warn(
-						"Could not read credential — skipping Desktop setup.",
+						"Could not read credential - skipping Desktop setup.",
 					);
 				} else {
 					const desktopId = `${id}-desktop`;
@@ -378,7 +378,7 @@ export async function addCommand(): Promise<void> {
 					updateProfileDesktopLink(id, dp.id);
 					prompts.log.success("Desktop profile saved and linked.");
 
-					// "Sign in to another" — park, relaunch, wait for new credential
+					// "Sign in to another" - park, relaunch, wait for new credential
 					if (intent === "another") {
 						const parkSpinner = prompts.spinner();
 						parkSpinner.start("Parking current session...");
@@ -505,7 +505,7 @@ export async function addCommand(): Promise<void> {
 			}
 		}
 	} catch {
-		// Desktop detection failed (e.g., no keychain tool) — silently skip
+		// Desktop detection failed (e.g., no keychain tool) - silently skip
 	}
 
 	prompts.outro(`Profile "${id}" created successfully!`);

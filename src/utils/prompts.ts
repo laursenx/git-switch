@@ -48,7 +48,7 @@ export async function selectProfile(
 		);
 		if (!confirmed) {
 			prompts.cancel("Aborted.");
-			process.exit(0);
+		process.exit(0);
 		}
 		return profile;
 	}
@@ -98,7 +98,7 @@ export async function selectDesktopProfile(
 		);
 		if (!confirmed) {
 			prompts.cancel("Aborted.");
-			process.exit(0);
+		process.exit(0);
 		}
 		return dp;
 	}

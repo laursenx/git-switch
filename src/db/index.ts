@@ -8,7 +8,7 @@ import * as schema from "./schema.js";
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 /**
- * Run embedded migrations. Each migration runs once — tracked in `_migrations` table.
+ * Run embedded migrations. Each migration runs once - tracked in `_migrations` table.
  * Drizzle Kit generates the SQL; Bun embeds it as string constants at build time.
  */
 function runMigrations(sqlite: Database): void {
@@ -25,7 +25,7 @@ function runMigrations(sqlite: Database): void {
 			.get(id);
 		if (applied) continue;
 
-		// Run each migration atomically — all statements succeed or none do
+		// Run each migration atomically - all statements succeed or none do
 		sqlite.run("BEGIN");
 		try {
 			const statements = sql.split("--> statement-breakpoint");

@@ -145,7 +145,7 @@ function win32CredWrite(target: string, userName: string, blob: Buffer): void {
 	view.setUint32(4, CRED_TYPE_GENERIC, true); // Type
 	view.setBigUint64(8, BigInt(targetWide.pointer), true); // TargetName
 	view.setBigUint64(16, BigInt(0), true); // Comment
-	// LastWritten at 24 — leave zeros
+	// LastWritten at 24 - leave zeros
 	view.setUint32(32, blob.length, true); // BlobSize
 	view.setBigUint64(40, BigInt(ptr(blob)), true); // Blob
 	view.setUint32(48, CRED_PERSIST_LOCAL_MACHINE, true); // Persist
@@ -240,13 +240,13 @@ function ensureKeychainTool(): void {
 		);
 	}
 
-	// Windows uses Bun FFI to advapi32.dll — no external tools needed
+	// Windows uses Bun FFI to advapi32.dll - no external tools needed
 	_keychainToolChecked = true;
 }
 
 function readToken(label: string): string {
-	// TODO: macOS — runOrThrow("security", ["find-internet-password", "-l", label, "-w"])
-	// TODO: Linux — runOrThrow("secret-tool", ["lookup", "label", label])
+	// TODO: macOS - runOrThrow("security", ["find-internet-password", "-l", label, "-w"])
+	// TODO: Linux - runOrThrow("secret-tool", ["lookup", "label", label])
 	const result = win32CredRead(label);
 	if (!result) {
 		throw new DesktopKeychainError("win32", `Credential not found: "${label}"`);
@@ -255,14 +255,14 @@ function readToken(label: string): string {
 }
 
 function deleteEntry(label: string): void {
-	// TODO: macOS — run("security", ["delete-internet-password", "-l", label])
-	// TODO: Linux — run("secret-tool", ["clear", "label", label])
+	// TODO: macOS - run("security", ["delete-internet-password", "-l", label])
+	// TODO: Linux - run("secret-tool", ["clear", "label", label])
 	win32CredDelete(label);
 }
 
 function addEntry(label: string, account: string, token: string): void {
-	// TODO: macOS — runOrThrow("security", ["add-internet-password", "-l", label, "-a", account, "-s", "github.com", "-w", token])
-	// TODO: Linux — run("secret-tool", ["store", "--label", label, "label", label], { input: token })
+	// TODO: macOS - runOrThrow("security", ["add-internet-password", "-l", label, "-a", account, "-s", "github.com", "-w", token])
+	// TODO: Linux - run("secret-tool", ["store", "--label", label, "label", label], { input: token })
 	const blob = Buffer.from(token, "base64");
 	win32CredWrite(label, account, blob);
 }
@@ -275,8 +275,8 @@ export interface DetectedCredential {
 export function listGitHubCredentials(): DetectedCredential[] {
 	ensureKeychainTool();
 
-	// TODO: macOS — parse `security dump-keychain` output for GitHub entries
-	// TODO: Linux — secret-tool doesn't have a good list/filter command
+	// TODO: macOS - parse `security dump-keychain` output for GitHub entries
+	// TODO: Linux - secret-tool doesn't have a good list/filter command
 	const all = win32CredEnumerate("GitHub*");
 	return all
 		.filter((c) => /^GitHub - https:\/\/api\.github\.com\//i.test(c.target))
@@ -358,7 +358,7 @@ export async function validateStoredToken(
 		}
 		return null;
 	} catch {
-		// Network error — can't validate, assume OK
+		// Network error - can't validate, assume OK
 		return { login: "unknown", id: 0, name: null, avatar_url: "" };
 	}
 }
@@ -428,7 +428,7 @@ export async function fetchDesktopUsersJson(
 			plan: user.plan?.name ?? "free",
 		};
 
-		// LevelDB prefix byte — matches the format Electron localStorage uses
+		// LevelDB prefix byte - matches the format Electron localStorage uses
 		return `\x01${JSON.stringify([desktopUser])}`;
 	} catch {
 		return null;

@@ -74,7 +74,7 @@ export function takeSnapshot(opts: TakeSnapshotOptions): SnapshotManifest {
 		const keychainManifest = {
 			before_label: opts.keychainLabels.before,
 			after_label: opts.keychainLabels.after,
-			note: "No tokens stored — labels only for reference",
+			note: "No tokens stored - labels only for reference",
 		};
 		atomicWriteFile(
 			path.join(dir, "keychain-manifest.json"),

@@ -1,6 +1,6 @@
-// Embedded migrations — Bun inlines these as string constants at build time.
+// Embedded migrations - Bun inlines these as string constants at build time.
 // When adding new migrations: import the .sql file and append to the array.
-// @ts-expect-error — Bun handles `with { type: "text" }` imports
+// @ts-expect-error - Bun handles `with { type: "text" }` imports
 import m0000 from "./migrations/0000_whole_thunderbolt.sql" with {
 	type: "text",
 };

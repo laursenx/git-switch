@@ -2,16 +2,16 @@
 
 > **Note:** This project was built with heavy use of AI (Claude). While it works well for my own workflow, expect rough edges and bugs. Issues and PRs welcome.
 
-Git identity and SSH key profile switcher for developers who work with multiple Git accounts (e.g. personal + work GitHub) on a single machine. **Windows-only** for now — macOS/Linux support would need to come from contributors (TODO stubs are in the codebase).
+Git identity and SSH key profile switcher for developers who work with multiple Git accounts (e.g. personal + work GitHub) on a single machine. **Windows-only** for now - macOS/Linux support would need to come from contributors (TODO stubs are in the codebase).
 
 ## Features
 
-- **Per-repo profiles** — identity is applied to `.git/config`, not globally. Two terminals can use different profiles simultaneously.
-- **SSH key routing** — each profile maps to an SSH alias with `url.insteadOf` rewriting, so `git@github.com:` routes through the correct key.
-- **Submodule support** — `mark` applies identity and URL rewrites to all submodule configs recursively.
-- **Snapshot & undo** — every destructive operation snapshots all affected files before writing. Auto-restores on failure.
-- **SSH key providers** — 1Password (via `op` CLI) and manual `~/.ssh` keys.
-- **GitHub Desktop switching** — opt-in OS keychain rotation to switch Desktop accounts without re-signing in.
+- **Per-repo profiles** - identity is applied to `.git/config`, not globally. Two terminals can use different profiles simultaneously.
+- **SSH key routing** - each profile maps to an SSH alias with `url.insteadOf` rewriting, so `git@github.com:` routes through the correct key.
+- **Submodule support** - `mark` applies identity and URL rewrites to all submodule configs recursively.
+- **Snapshot & undo** - every destructive operation snapshots all affected files before writing. Auto-restores on failure.
+- **SSH key providers** - 1Password (via `op` CLI) and manual `~/.ssh` keys.
+- **GitHub Desktop switching** - opt-in OS keychain rotation to switch Desktop accounts without re-signing in.
 
 ## Installation
 
@@ -183,10 +183,10 @@ On `git-switch desktop switch <profile>`:
 
 ## Known Limitations
 
-- **Mixed-account submodules**: A repo with submodules from two different GitHub accounts cannot be fully resolved — `url.insteadOf` routes one alias per host.
-- **Windows-only**: macOS and Linux are not yet supported. TODO stubs exist in the codebase — contributions welcome.
+- **Mixed-account submodules**: A repo with submodules from two different GitHub accounts cannot be fully resolved - `url.insteadOf` routes one alias per host.
+- **Windows-only**: macOS and Linux are not yet supported. TODO stubs exist in the codebase - contributions welcome.
 - **GitHub Desktop OAuth scope**: Only Desktop's own GitHub account is managed. VS Code, JetBrains, and other editors' GitHub integrations are separate.
-- **VS Code git operations**: Fully supported — VS Code calls system git directly.
+- **VS Code git operations**: Fully supported - VS Code calls system git directly.
 - **GUI git clients** (Fork, GitKraken, Tower, Sourcetree): Identity and URL rewrites apply since they call system git. SSH key routing depends on `SSH_AUTH_SOCK` support.
 - **HTTPS remotes**: `url.insteadOf` only rewrites SSH URLs. HTTPS remotes bypass this tool entirely.
 
@@ -196,9 +196,9 @@ On `git-switch desktop switch <profile>`:
 - `@clack/prompts` for interactive UI
 - Compiled to standalone binary via `bun build --compile`
 - Windows credential management via `bun:ffi` (direct advapi32.dll calls)
-- No external git libraries — shells out to system `git`
+- No external git libraries - shells out to system `git`
 - Config stored at `~/.config/git-switch/`
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE)
+GPL-3.0 - see [LICENSE](LICENSE)

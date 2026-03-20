@@ -12,7 +12,7 @@ import { abortIfCancelled } from "../../utils/prompts.js";
 
 export async function desktopLinkCommand(): Promise<void> {
 	prompts.intro(
-		"git-switch desktop link — Link Desktop profile to git-switch profile",
+		"git-switch desktop link - Link Desktop profile to git-switch profile",
 	);
 
 	const gitProfiles = listAllProfiles();

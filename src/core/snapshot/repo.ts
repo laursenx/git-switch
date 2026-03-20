@@ -60,7 +60,7 @@ export function restoreRepoFiles(
 					continue;
 				}
 			} catch {
-				// File doesn't exist yet — safe to write
+				// File doesn't exist yet - safe to write
 			}
 			fs.copyFileSync(src, file.original);
 			restored.push(file.original);

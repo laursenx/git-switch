@@ -7,7 +7,7 @@ import { DesktopTokenExpiredError } from "../../utils/errors.js";
 import { abortIfCancelled, selectDesktopProfile } from "../../utils/prompts.js";
 
 export async function desktopSwitchCommand(id?: string): Promise<void> {
-	prompts.intro("git-switch desktop switch — Switch Desktop account");
+	prompts.intro("git-switch desktop switch - Switch Desktop account");
 
 	const target = await selectDesktopProfile(id, "Switch GitHub Desktop to:");
 
