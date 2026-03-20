@@ -98,6 +98,17 @@ Run-Test -Name "Binary size matches source" -Code {
   if ($src -ne $dst) { Fail "Size mismatch: source=$src installed=$dst" }
 }
 
+Run-Test -Name "gs alias exists" -Code {
+  $alias = Join-Path $InstallDir "gs.exe"
+  if (-not (Test-Path $alias)) { Fail "gs.exe not found at $alias" }
+}
+
+Run-Test -Name "gs alias works" -Code {
+  $alias = Join-Path $InstallDir "gs.exe"
+  $ver = & $alias --version 2>&1
+  if ($LASTEXITCODE -ne 0) { Fail "gs.exe failed to run" }
+}
+
 Run-Test -Name "PATH contains install dir" -Code {
   $p = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not $p.Contains($InstallDir)) { Fail "Not in user PATH" }
@@ -152,6 +163,11 @@ if (-not $KeepInstall) {
 
   Run-Test -Name "Binary removed" -Code {
     if (Test-Path $InstalledBinary) { Fail "Still exists" }
+  }
+
+  Run-Test -Name "gs alias removed" -Code {
+    $alias = Join-Path $InstallDir "gs.exe"
+    if (Test-Path $alias) { Fail "gs.exe still exists" }
   }
 
   Run-Test -Name "PATH cleaned" -Code {

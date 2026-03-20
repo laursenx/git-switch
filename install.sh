@@ -114,6 +114,10 @@ fi
 
 chmod +x "$INSTALL_DIR/git-switch"
 
+# Create gs alias (symlink)
+ln -sf "$INSTALL_DIR/git-switch" "$INSTALL_DIR/gs"
+success "Created gs shortcut"
+
 # Remove macOS quarantine
 if [ "$(uname -s)" = "Darwin" ]; then
   xattr -d com.apple.quarantine "$INSTALL_DIR/git-switch" 2>/dev/null || true
@@ -176,4 +180,5 @@ printf "  Location: ${CYAN}%s/git-switch${RESET}\n" "$INSTALL_DIR"
 printf "\n"
 printf "  ${DIM}You may need to restart your terminal, then run:${RESET}\n"
 printf "  ${BOLD}git-switch --help${RESET}\n"
+printf "  ${DIM}gs --help           (shortcut)${RESET}\n"
 printf "\n"

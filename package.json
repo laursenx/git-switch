@@ -4,7 +4,8 @@
   "description": "Git identity and SSH key profile switcher for multi-account developers",
   "type": "commonjs",
   "bin": {
-    "git-switch": "./dist/index.js"
+    "git-switch": "./dist/index.js",
+    "gs": "./dist/index.js"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun --minify",
