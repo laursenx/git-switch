@@ -3,7 +3,7 @@ import { detectCurrentProfile, getGitDir } from "../core/git-config.js";
 import { listAllProfiles } from "../core/profiles.js";
 
 export async function listCommand(): Promise<void> {
-	prompts.intro("git-switch list — All profiles");
+	prompts.intro("git-switch list - All profiles");
 
 	const profiles = listAllProfiles();
 	if (profiles.length === 0) {

@@ -7,7 +7,7 @@ import { globalGitConfigPath } from "../utils/paths.js";
 import { selectProfile, switchDesktopWithRecovery } from "../utils/prompts.js";
 
 export async function globalCommand(profileId?: string): Promise<void> {
-	prompts.intro("git-switch global — Set global git identity");
+	prompts.intro("git-switch global - Set global git identity");
 
 	const profile = await selectProfile(
 		profileId,

@@ -20,7 +20,7 @@ function formatTransition(snap: SnapshotManifest): string {
 }
 
 export async function undoListCommand(): Promise<void> {
-	prompts.intro("git-switch undo --list — Snapshots for current repo");
+	prompts.intro("git-switch undo --list - Snapshots for current repo");
 
 	const repoRoot = ensureGitRepo().repoRoot;
 	const hash = repoHash(repoRoot);
@@ -56,7 +56,7 @@ export async function undoListCommand(): Promise<void> {
 }
 
 export async function undoCommand(snapshotId?: string): Promise<void> {
-	prompts.intro("git-switch undo — Restore from snapshot");
+	prompts.intro("git-switch undo - Restore from snapshot");
 
 	const repoRoot = ensureGitRepo().repoRoot;
 	const hash = repoHash(repoRoot);

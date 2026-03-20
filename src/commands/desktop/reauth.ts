@@ -12,7 +12,7 @@ import { abortIfCancelled, selectDesktopProfile } from "../../utils/prompts.js";
 
 export async function desktopReauthCommand(id?: string): Promise<void> {
 	prompts.intro(
-		"git-switch desktop reauth — Re-authenticate a Desktop profile",
+		"git-switch desktop reauth - Re-authenticate a Desktop profile",
 	);
 
 	const profile = await selectDesktopProfile(
@@ -84,7 +84,7 @@ export async function desktopReauthCommand(id?: string): Promise<void> {
 	} else {
 		keychainLabel = abortIfCancelled(
 			await prompts.select({
-				message: "Multiple accounts detected — select the one to use",
+				message: "Multiple accounts detected - select the one to use",
 				options: credentials.map((c) => ({
 					value: c.target,
 					label: c.target,

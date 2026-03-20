@@ -3,7 +3,7 @@ import { listAllDesktopProfiles } from "../../core/desktop-profiles.js";
 import { listAllProfiles } from "../../core/profiles.js";
 
 export async function desktopListCommand(): Promise<void> {
-	prompts.intro("git-switch desktop list — Saved Desktop profiles");
+	prompts.intro("git-switch desktop list - Saved Desktop profiles");
 
 	const desktopProfiles = listAllDesktopProfiles();
 	if (desktopProfiles.length === 0) {
@@ -32,7 +32,7 @@ export async function desktopListCommand(): Promise<void> {
 	prompts.log.info("-".repeat(header.length));
 
 	for (const dp of desktopProfiles) {
-		const linked = linkMap.get(dp.id) || "—";
+		const linked = linkMap.get(dp.id) || "-";
 		const line = [
 			dp.id.padEnd(20),
 			dp.label.padEnd(24),

@@ -34,6 +34,13 @@ if (Test-Path $BinaryPath) {
   Write-Step "Binary not found at $BinaryPath"
 }
 
+# Remove gs alias
+$AliasPath = Join-Path $InstallDir "gs.exe"
+if (Test-Path $AliasPath) {
+  Remove-Item $AliasPath -Force
+  Write-Success "Removed gs shortcut"
+}
+
 # Remove install directory if empty
 if ((Test-Path $InstallDir) -and @(Get-ChildItem $InstallDir).Count -eq 0) {
   Remove-Item $InstallDir -Force

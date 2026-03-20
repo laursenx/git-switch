@@ -32,6 +32,12 @@ else
   step "Binary not found at $INSTALL_DIR/git-switch"
 fi
 
+# Remove gs alias
+if [ -f "$INSTALL_DIR/gs" ] || [ -L "$INSTALL_DIR/gs" ]; then
+  rm -f "$INSTALL_DIR/gs"
+  success "Removed gs shortcut"
+fi
+
 # Remove PATH entries from shell profiles
 remove_from_profile() {
   local profile="$1"

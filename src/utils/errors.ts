@@ -49,3 +49,10 @@ export class NotInGitRepoError extends GitSwitchError {
 		this.name = "NotInGitRepoError";
 	}
 }
+
+export class UserCancelledError extends Error {
+	constructor() {
+		super("Aborted.");
+		this.name = "UserCancelledError";
+	}
+}

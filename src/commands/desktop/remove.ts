@@ -7,7 +7,7 @@ import {
 import { selectDesktopProfile } from "../../utils/prompts.js";
 
 export async function desktopRemoveCommand(id?: string): Promise<void> {
-	prompts.intro("git-switch desktop remove — Delete a Desktop profile");
+	prompts.intro("git-switch desktop remove - Delete a Desktop profile");
 
 	const target = await selectDesktopProfile(
 		id,

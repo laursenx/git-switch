@@ -4,7 +4,7 @@ import { GitSwitchError } from "../../utils/errors.js";
 import { gitDesktopLocalStorageDir } from "../../utils/paths.js";
 
 // ---------------------------------------------------------------------------
-// CRC32C — lookup-table implementation (Castagnoli polynomial 0x1EDC6F41)
+// CRC32C - lookup-table implementation (Castagnoli polynomial 0x1EDC6F41)
 // ---------------------------------------------------------------------------
 
 const CRC32C_TABLE = buildCrc32cTable();
@@ -98,7 +98,7 @@ function parseLogFile(data: Uint8Array): KvEntry[] {
 	let pending: Uint8Array[] = [];
 
 	while (offset < data.length) {
-		// Align to block boundary — skip block trailer if not enough room for header
+		// Align to block boundary - skip block trailer if not enough room for header
 		const blockOffset = offset % BLOCK_SIZE;
 		const remaining = BLOCK_SIZE - blockOffset;
 		if (remaining < HEADER_SIZE) {
@@ -183,7 +183,7 @@ function parseBatch(record: Uint8Array, out: KvEntry[]): void {
 				sequence: sequence + BigInt(i),
 			});
 		} else {
-			// Delete entry — skip key only
+			// Delete entry - skip key only
 			const [keyLen, keyStart] = decodeVarint(record, pos);
 			pos = keyStart + keyLen;
 		}
@@ -256,7 +256,7 @@ function tryParseTableEntry(
 		const [valueLen, p3] = decodeVarint(data, pos);
 		if (p3 !== keyOffset) continue;
 
-		// Varints line up — read value
+		// Varints line up - read value
 		const valueStart = keyOffset + keyLen;
 		if (valueStart + valueLen > data.length) continue;
 

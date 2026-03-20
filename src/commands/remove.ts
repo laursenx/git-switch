@@ -7,7 +7,7 @@ import {
 import { abortIfCancelled, selectProfile } from "../utils/prompts.js";
 
 export async function removeCommand(profileId?: string): Promise<void> {
-	prompts.intro("git-switch remove — Delete a profile");
+	prompts.intro("git-switch remove - Delete a profile");
 
 	const profile = await selectProfile(profileId, "Select profile to remove");
 

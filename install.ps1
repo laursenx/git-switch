@@ -122,6 +122,15 @@ try {
   Write-Success "Binary downloaded"
 }
 
+# Create gs.exe alias (copy binary)
+$AliasPath = Join-Path $InstallDir "gs.exe"
+try {
+  Copy-Item $DestPath $AliasPath -Force -ErrorAction Stop
+  Write-Success "Created gs shortcut"
+} catch {
+  Write-Step "gs shortcut in use - will update on next restart"
+}
+
 # Add to PATH
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -split ";" | Where-Object { $_ -eq $InstallDir }) {
@@ -144,4 +153,6 @@ Write-Host $DestPath -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  You may need to restart your terminal, then run:" -ForegroundColor DarkGray
 Write-Host "  git-switch --help" -ForegroundColor White
+Write-Host "  gs --help" -ForegroundColor DarkGray -NoNewline
+Write-Host "           (shortcut)" -ForegroundColor DarkGray
 Write-Host ""

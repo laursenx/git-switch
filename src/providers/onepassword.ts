@@ -96,7 +96,7 @@ export class OnePasswordProvider implements SSHKeyProvider {
 				throw new ProviderError(
 					this.id,
 					`SSH key "${ref}" not found in 1Password. ` +
-						'Run: op item list --categories "SSH Key" — to see available keys.',
+						'Run: op item list --categories "SSH Key" - to see available keys.',
 				);
 			}
 			throw new ProviderError(

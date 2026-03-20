@@ -5,8 +5,8 @@ Run these tests after any code changes. All commands use `bun src/index.ts` for 
 ## Build Pipeline
 
 ```bash
-bun run lint          # Biome check — 0 errors
-bun run typecheck     # tsc --noEmit — 0 errors
+bun run lint          # Biome check - 0 errors
+bun run typecheck     # tsc --noEmit - 0 errors
 bun run build         # Bundle to dist/index.js
 bun run compile       # Compile standalone binary
 ```
